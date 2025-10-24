@@ -6,6 +6,9 @@ import magritte.plot     as plot                       # Plotting
 import magritte.mesher   as mesher                  # Mesher
 import magritte.tools    as tools      # Save fits
 
+print("Threads avail:", magritte.pcmt_n_threads_avail())
+magritte.pcmt_set_n_threads_avail(8)
+print("After set:", magritte.pcmt_n_threads_avail())
 
 import numpy             as np                      # Data structures
 import warnings                                     # Hide warnings
@@ -22,7 +25,7 @@ from yt.funcs            import mylog               # To avoid yt output
 mylog.setLevel(40)                                  # as error messages
 
 wdir = "/home/yasho379/magritte_rebuilt/tgs/"
-odir= "/home/yasho379/magritte_rebuilt/output/"
+odir= "/home/yasho379/magritte_rebuilt/output"
 # Define file names
 
 model_file = os.path.join(wdir, 'model_files/NLTE_analytic_sphere_nh3.hdf5')   # Resulting Magritte model
@@ -30,7 +33,7 @@ lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt'                  )   # Li
 bmesh_name = os.path.join(wdir, 'analytic_disk'           )   # bachground mesh name (no extension!)
 
 
-# ## Model parameters
+### Model parameters
 
 
 # The functions below describe the disk structure, based on the Magritte application presented in [De Ceuster et al. (2019)](https://doi.org/10.1093/mnras/stz3557).
@@ -40,15 +43,15 @@ m_H2   = 2.01588 * constants.u.si.value
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Set model parameters.")
-parser.add_argument("--XNH3", type=float, default=1e-8, help="Ammonia abundance (default: 1e-8)")
-parser.add_argument("--numberdensity", type=float, default=5*1E6, help="Hydrogen Number Density in /cm^3(default: 5e6)")
+parser.add_argument("--XNH3", type=float, default=1e-7, help="Ammonia abundance (default: 1e-8)")
+parser.add_argument("--numberdensity", type=float, default=1e8, help="Hydrogen Number Density in /cm^3(default: 5e6)")
 parser.add_argument("--vturb", type=float, default=100, help="Turbulent velocity in m/s (default: 100)")
 parser.add_argument("--T_cloud", type=float, default=35, help="Cloud temperature in K (default: 35)")
-parser.add_argument("--max_NLTE", type=int, default=10, help="Maximum number of NLTE iterations (default: 10)")
+parser.add_argument("--max_NLTE", type=int, default=20, help="Maximum number of NLTE iterations (default: 10)")
 
 """
 prototype command to run the script with custom parameters:
-python nh3_NLTE_sphere.py --XNH3 1e-7 --numberdensity 1e7 --vturb 100 --T_cloud 50 --max_NLTE 10
+python nh3_NLTE_sphere.py --XNH3 1e-7 --numberdensity 1e8 --vturb 100 --T_cloud 35 --max_NLTE 20
 
 """
 args = parser.parse_args()
@@ -116,7 +119,7 @@ def velocity_f(rr):
     """
     x, y, z = rr[0], rr[1], rr[2]
     r = np.sqrt(x**2 + y**2 + z**2)
-    v_radial = 100   # [m/s], inward radial velocity
+    v_radial = 0   # [m/s], inward radial velocity
     if hasattr(r, "__len__"):
         v = np.zeros((3,) + r.shape)
         v[0] = v_radial * (x / r)
@@ -189,10 +192,10 @@ model = magritte.Model ()                              # Create model object
 model.parameters.set_model_name         (model_file)   # Magritte model file
 model.parameters.set_dimension          (3)            # This is a 3D model
 model.parameters.set_npoints            (npoints)      # Number of points
-model.parameters.set_nrays              (12*2*2)            # Number of rays  
+model.parameters.set_nrays              (12*1*1)            # Number of rays  
 model.parameters.set_nspecs             (3)            # Number of species (min. 5)
 model.parameters.set_nlspecs            (1)            # Number of line species
-model.parameters.set_nquads             (51)           # Number of quadrature points
+model.parameters.set_nquads             (25)           # Number of quadrature points
 model.parameters.sum_opacity_emissivity_over_all_lines = False
 # model.parameters.one_line_approximation = False
 
@@ -377,27 +380,18 @@ hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
 fits_file = os.path.join(wdir, f'NLTE_nh3_spectrum_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits')
 hdu.writeto(fits_file, overwrite=True)
 
-# %% [markdown]
-# #### Code to simultaneously fit the one-one and two-two lines using an ammonia hyperfine model
-
 import pyspeckit
 
 # The ammonia fitting wrapper requires a dictionary specifying the transition name
 # (one of the four specified below) and the filename.  Alternately, you can have the
 # dictionary values be pre-loaded Spectrum instances
-filenames = {'oneone':f'{odir}/images/NLTE_nh3_spectrum_oneone_unnormalised.fits',
-    'twotwo':f'{odir}/images/NLTE_nh3_spectrum_twotwo_unnormalised.fits'}
+filenames = {'oneone':os.path.join(wdir, f'NLTE_nh3_spectrum_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits'),
+    'twotwo': os.path.join(wdir, f'NLTE_nh3_spectrum_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits')}
 
 # Fit the ammonia spectrum with some reasonable initial guesses.  It is
 # important to crop out extraneous junk and to smooth the data to make the
 # fit proceed at a reasonable pace.
 spdict1,spectra1 = pyspeckit.wrappers.fitnh3.fitnh3tkin(filenames,crop=False,npeaks=2,guessline='twotwo',rebase=True,tkin=5.65,tex=4.49,column=15.5,fortho=0.3,verbose=True, smooth=False,dobaseline=True,doplot=True,fittype='ammonia')
-
-
-# %% [markdown]
-# #### Code to convert from Spectral Radiance to Main beam temperature
-
-# %%
 
 from astropy import units as u
 import astropy.io.fits as fits

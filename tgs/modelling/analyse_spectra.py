@@ -20,9 +20,10 @@ from scipy.signal        import savgol_filter
 from yt.funcs            import mylog               # To avoid yt output 
 mylog.setLevel(40)                                  # as error messages
 
-wdir = "/home/yasho379/magritte_rebuilt/tgs/"
-odir= "/home/yasho379/magritte_rebuilt/output/"
-
+wdir = "/home/yasho379/magritte_rebuilt/tgs"
+odir= "/home/yasho379/magritte_rebuilt/output"
+/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_11_1e-07_100.0_50.0_normalised.fits
+/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_11_1e-07_100.0_100.0_50.0_unnormalised.fits
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Set model parameters.")
 parser.add_argument("--XNH3", type=float, default=1e-8, help="Ammonia abundance (default: 1e-8)")
@@ -33,8 +34,7 @@ parser.add_argument("--max_NLTE", type=int, default=10, help="Maximum number of 
 
 """
 prototype command to run the script with custom parameters:
-python nh3_NLTE_sphere.py --XNH3 1e-7 --numberdensity 1e7 --vturb 100 --T_cloud 50 --max_NLTE 10
-
+python analyse_spectra.py --XNH3 1e-7 --numberdensity 1e7 --vturb 200 --T_cloud 50 --max_NLTE 15
 """
 args = parser.parse_args()
 
@@ -44,13 +44,14 @@ T_cloud = args.T_cloud
 max_NLTE_iterations = args.max_NLTE
 numberdensity = args.numberdensity
 
+
 import pyspeckit
 
 # The ammonia fitting wrapper requires a dictionary specifying the transition name
 # (one of the four specified below) and the filename.  Alternately, you can have the
 # dictionary values be pre-loaded Spectrum instances
-filenames = {'oneone':f'{odir}/images/NLTE_nh3_spectrum_oneone_unnormalised.fits',
-    'twotwo':f'{odir}/images/NLTE_nh3_spectrum_twotwo_unnormalised.fits'}
+filenames = {'oneone':os.path.join(wdir, f'NLTE_nh3_spectrum_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits'),
+    'twotwo': os.path.join(wdir, f'NLTE_nh3_spectrum_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits')}
 
 # Fit the ammonia spectrum with some reasonable initial guesses.  It is
 # important to crop out extraneous junk and to smooth the data to make the
