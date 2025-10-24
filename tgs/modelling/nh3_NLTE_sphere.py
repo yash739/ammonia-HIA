@@ -6,24 +6,26 @@ import magritte.plot     as plot                       # Plotting
 import magritte.mesher   as mesher                  # Mesher
 import magritte.tools    as tools      # Save fits
 
+
 import numpy             as np                      # Data structures
 import warnings                                     # Hide warnings
 warnings.filterwarnings('ignore')                   # especially for yt
 import yt                                           # 3D plotting
+import argparse                                     # Command line arguments
 import os
 
 from tqdm                import tqdm                # Progress bars
 from astropy             import units, constants    # Unit conversions
 from scipy.spatial       import Delaunay, cKDTree   # Finding neighbors
+from scipy.signal        import savgol_filter
 from yt.funcs            import mylog               # To avoid yt output 
 mylog.setLevel(40)                                  # as error messages
 
-
 wdir = "/home/yasho379/magritte_rebuilt/tgs/"
+odir= "/home/yasho379/magritte_rebuilt/output/"
+# Define file names
 
-# Define file names.
-
-model_file = os.path.join(wdir, 'NLTE_analytic_sphere_nh3.hdf5')   # Resulting Magritte model
+model_file = os.path.join(wdir, 'model_files/NLTE_analytic_sphere_nh3.hdf5')   # Resulting Magritte model
 lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt'                  )   # Line data file
 bmesh_name = os.path.join(wdir, 'analytic_disk'           )   # bachground mesh name (no extension!)
 
@@ -32,19 +34,32 @@ bmesh_name = os.path.join(wdir, 'analytic_disk'           )   # bachground mesh 
 
 
 # The functions below describe the disk structure, based on the Magritte application presented in [De Ceuster et al. (2019)](https://doi.org/10.1093/mnras/stz3557).
-
-
 G      =           constants.G.si.value
 kb     =           constants.k_B.si.value
 m_H2   = 2.01588 * constants.u.si.value
 
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="Set model parameters.")
+parser.add_argument("--XNH3", type=float, default=1e-8, help="Ammonia abundance (default: 1e-8)")
+parser.add_argument("--numberdensity", type=float, default=5*1E6, help="Hydrogen Number Density in /cm^3(default: 5e6)")
+parser.add_argument("--vturb", type=float, default=100, help="Turbulent velocity in m/s (default: 100)")
+parser.add_argument("--T_cloud", type=float, default=35, help="Cloud temperature in K (default: 35)")
+parser.add_argument("--max_NLTE", type=int, default=10, help="Maximum number of NLTE iterations (default: 10)")
 
-XNH3    =  1e-8   # [.]
-vturb  =  100    # [m/s]
+"""
+prototype command to run the script with custom parameters:
+python nh3_NLTE_sphere.py --XNH3 1e-7 --numberdensity 1e7 --vturb 100 --T_cloud 50 --max_NLTE 10
 
-T_cloud =  35 # [K]
+"""
+args = parser.parse_args()
 
-rho_cloud = 5*1.0E6 * 1.0E6 * m_H2   # [kg/m^3]
+XNH3 = args.XNH3
+vturb = args.vturb
+T_cloud = args.T_cloud
+max_NLTE_iterations = args.max_NLTE
+numberdensity = args.numberdensity
+rho_cloud = numberdensity* 1.0E6 * m_H2   # [kg/m^3] for magritte purposes
+
 r_out  =   5000.0 * constants.au.si.value
 r_in   =    100.0 * constants.au.si.value
 
@@ -113,7 +128,7 @@ def velocity_f(rr):
 
 # Define the desired background mesh, a ($75 \times 75 \times 75$) cube.
 
-resolution = 40
+resolution = 50
 
 xs = np.linspace(-r_out*1.2, +r_out*1.2, resolution, endpoint=True)
 ys = np.linspace(-r_out*1.2, +r_out*1.2, resolution, endpoint=True)
@@ -130,7 +145,6 @@ rhos_min  = np.min(rhos[rhos!=0.0])
 rhos     += rhos_min
 
 # Now we remesh this model using the new remesher
-
 positions_reduced, nb_boundary = mesher.remesh_point_cloud(position, rhos.ravel(), max_depth=10, threshold= 2e-1, hullorder=4)
 
 # We add a spherical inner boundary at 0.01*r_out
@@ -170,21 +184,6 @@ nNH3      = np.array([abn_nNH3   (rr) for rr in positions_reduced])
 tmp      = np.array([temperature(rr) for rr in positions_reduced])
 trb      = np.array([turbulence (rr) for rr in positions_reduced])
 
-# ## Create model
-
-# %% [markdown]
-# Now all data is read, we can use it to construct a Magritte model.
-# 
-# <div class="alert alert-warning">
-# 
-# Warning
-# 
-# Since we do not aim to do self-consistent non-LTE simulations in these examples, we only consider the first radiative transition of CO (J=1-0). To consider all transitions, use `setup.set_linedata_from_LAMDA_file` as in the commented line below it.
-# We also only consider 2 rays here (up and down the direction we want to image). To consider all directions, comment out the indecated lines and use `setup.set_uniform_rays` as in the commented line below.
-#     
-# </div>
-
-# %%
 model = magritte.Model ()                              # Create model object
 
 model.parameters.set_model_name         (model_file)   # Magritte model file
@@ -245,7 +244,7 @@ model = magritte.Model(model_file)
 model.compute_spectral_discretisation ()
 model.compute_inverse_line_widths     ()
 model.compute_LTE_level_populations   ()
-model.compute_level_populations_sparse (True, 5) #with param args: whether to use Ng-acceleration for faster convergence (True) and max number of NLTE iterations (20)
+model.compute_level_populations_sparse (True, max_NLTE_iterations) #with param args: whether to use Ng-acceleration for faster convergence (True) and max number of NLTE iterations (20)
 
 fcen = model.lines.lineProducingSpecies[0].linedata.frequency
 print(fcen)
@@ -271,7 +270,7 @@ model.compute_image_new               (ray_nr,16,16) #using a resolution of 512x
 #Instead of definining a ray index [0, nrays-1], you can also define a ray direction for the imager 
 #model.compute_image_new              (rx, ry, rz, 512, 512)#in which (rx, ry, rz) is the (normalized) ray direction
 
-tools.save_fits(model,filename='NLTE_nh3_spectrum_oneone.fits')
+tools.save_fits(model,filename=f'NLTE_nh3_spectrum_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits')
 
 # plot.image_channel(model,[3243,3244],[1,2])
 fig=plot.image_channel(model,[110,200,249,300,360],[1,5])
@@ -287,18 +286,10 @@ pixel_coords_x, pixel_coords_y = np.array(model.images[-1].ImX), np.array(model.
 # Is = np.sum(intensities, axis=0) * (np.max(pixel_coords_x) - np.min(pixel_coords_x)) * (np.max(pixel_coords_y) - np.min(pixel_coords_y)) / (len(pixel_coords_x))
 Is=(intensities[119,:]+intensities[120,:]+intensities[135,:]+intensities[136,:])/4
 
-# I assume you want the intensity, integrated over the image area; NOTE: the normalization still needed to be done, so multiply with the area of a single pixel = total area [in m2]/number of pixels
-# the resulting intensity (Is) should be in units of [W sr-1 Hz-1]; though any other normalization still has to be done
-# print(velos,Is)
-# len(velos), len(Is)
-# print(max(Is))
-
-# %%
 print(velos,Is)
 np.size(velos), np.size(Is)
 print(np.max(Is))
 
-# %%
 velos1=velos
 import matplotlib.pyplot as plt
 plt.plot(velos1, Is)
@@ -315,7 +306,7 @@ hdu.header['NAXIS1'] = len(velos1)
 hdu.header['RESTFREQ'] = fcen  # Rest frequency of the line
 hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
 
-fits_file = os.path.join(wdir, 'NLTE_nh3_spectrum_oneone_normalised.fits')
+fits_file = os.path.join(wdir, f'NLTE_nh3_spectrum_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_normalised.fits')
 hdu.writeto(fits_file, overwrite=True)
 
 hdu = fits.PrimaryHDU(Is)
@@ -328,11 +319,8 @@ hdu.header['NAXIS1'] = len(velos1)
 hdu.header['RESTFREQ'] = fcen  # Rest frequency of the line
 hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
 
-fits_file = os.path.join(wdir, 'NLTE_nh3_spectrum_oneone_unnormalised.fits')
+fits_file = os.path.join(wdir, f'NLTE_nh3_spectrum_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits')
 hdu.writeto(fits_file, overwrite=True)
-
-
-# %%
 
 fcen = model.lines.lineProducingSpecies[0].linedata.frequency[6]
 fmin=fcen- 3000000.00
@@ -347,7 +335,7 @@ model.compute_image_new               (ray_nr, 16, 16)#using a resolution of 512
 #Instead of definining a ray index [0, nrays-1], you can also define a ray direction for the imager 
 
 fig=plot.image_channel(model,[110,200,249,300,360],[1,5])
-tools.save_fits(model, filename='NLTE_nh3_spectrum_twotwo.fits')
+tools.save_fits(model, filename=f'NLTE_nh3_spectrum_22_{XNH3}_{vturb}_{T_cloud}.fits')
 
 #frequencies and intensities can be extracted from the image object
 velos = (np.array(model.images[-1].freqs) - fcen)/fcen*3e8/1000 #convert frequency to velocity in km/s
@@ -358,8 +346,6 @@ pixel_coords_x, pixel_coords_y = np.array(model.images[-1].ImX), np.array(model.
 # Is = np.sum(intensities, axis=0) * (np.max(pixel_coords_x) - np.min(pixel_coords_x)) * (np.max(pixel_coords_y) - np.min(pixel_coords_y)) / (len(pixel_coords_x))
 Is=(intensities[119,:]+intensities[120,:]+intensities[135,:]+intensities[136,:])/4
 
-
-# %%
 velos2=velos
 print(velos2)
 #shift velo to have the centre at 0
@@ -376,7 +362,7 @@ hdu.header['CUNIT1'] = 'km/s'
 hdu.header['NAXIS1'] = len(velos2)
 hdu.header['RESTFREQ'] = fcen  # Rest frequency of the line
 hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
-fits_file = os.path.join(wdir, 'NLTE_nh3_spectrum_twotwo_normalised.fits')
+fits_file = os.path.join(wdir, f'NLTE_nh3_spectrum_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_normalised.fits')
 hdu.writeto(fits_file, overwrite=True)
 
 hdu = fits.PrimaryHDU(Is)
@@ -388,20 +374,19 @@ hdu.header['CUNIT1'] = 'km/s'
 hdu.header['NAXIS1'] = len(velos2)
 hdu.header['RESTFREQ'] = fcen  # Rest frequency of the line
 hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
-fits_file = os.path.join(wdir, 'NLTE_nh3_spectrum_twotwo_unnormalised.fits')
+fits_file = os.path.join(wdir, f'NLTE_nh3_spectrum_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_unnormalised.fits')
 hdu.writeto(fits_file, overwrite=True)
 
 # %% [markdown]
 # #### Code to simultaneously fit the one-one and two-two lines using an ammonia hyperfine model
 
-# %%
 import pyspeckit
 
 # The ammonia fitting wrapper requires a dictionary specifying the transition name
 # (one of the four specified below) and the filename.  Alternately, you can have the
 # dictionary values be pre-loaded Spectrum instances
-filenames = {'oneone':'/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_oneone_normalised.fits',
-    'twotwo':'/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_twotwo_normalised.fits'}
+filenames = {'oneone':f'{odir}/images/NLTE_nh3_spectrum_oneone_unnormalised.fits',
+    'twotwo':f'{odir}/images/NLTE_nh3_spectrum_twotwo_unnormalised.fits'}
 
 # Fit the ammonia spectrum with some reasonable initial guesses.  It is
 # important to crop out extraneous junk and to smooth the data to make the
@@ -421,9 +406,6 @@ import numpy as np
 h  = 6.62607015e-34          # Planck  [J s]
 k_B  = 1.380649e-23            # Boltzmann [J K⁻¹]
 c  = 2.99792458e8            # speed of light [m s⁻¹]
-
-filenames = {'oneone':'/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_oneone_unnormalised.fits',
-    'twotwo':'/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_twotwo_unnormalised.fits'}
 
 # Load the spectra from the FITS files
 spec1 = fits.getdata(filenames['oneone'])
@@ -465,13 +447,10 @@ plt.xlabel('Velocity (km/s)')
 plt.ylabel('Tmb (K)')
 plt.legend()
 plt.tight_layout()
-plt.savefig('/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_oneone_twotwo.png')
+plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.png')
 
-
-
-# %%
 #subtract baseline from the spectra by subtracting a straight line fitted to the edges of the spectra
-from scipy.signal import savgol_filter
+
 def subtract_baseline(velos, intensities, edge_fraction=0.1):
     n = len(velos)
     edge_n = int(n * edge_fraction)
@@ -503,5 +482,5 @@ plt.xlabel('Velocity (km/s)')
 plt.ylabel('Tmb (K)')
 plt.legend()
 plt.tight_layout()
-plt.savefig('/home/yasho379/magritte_rebuilt/tgs/NLTE_nh3_spectrum_oneone_twotwo_corrected.png')
+plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity}_{vturb}_{T_cloud}_corrected.png')
 
