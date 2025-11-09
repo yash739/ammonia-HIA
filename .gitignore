@@ -1,0 +1,6 @@
+# Ignore PNG images
+*.png
+
+# Ignore HDF5 files
+*.h5
+*.hdf5
