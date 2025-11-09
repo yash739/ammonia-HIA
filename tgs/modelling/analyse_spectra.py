@@ -301,3 +301,10 @@ print(f"τ(1,1)       : {res['tau_11']:.2f}")
 print(f"T_ex (1,1)   : {res['Tex_11']:.2f} K")
 print(f"T_rot        : {res['Trot']:.2f} K")
 print(f"T_kin        : {res['Tkin']:.2f} K")
+
+amps11=res['fit_params_11'][0:3]
+#write the ratio of the amplitudes of the main and inner satellite components to a results text file
+with open(f'{odir}/results/NLTE_nh3_results.csv', 'a') as f:
+    f.write(f"{XNH3},{numberdensity},{vturb},{T_cloud},{amps11[0]:.3f},{amps11[1]:.3f},{amps11[2]:.3f},{amps11[3]:.3f},{amps11[4]:.3f},{amps11[4]/amps11[0]:.3f},{amps11[3]/amps11[1]:.3f},{amps11[2]/amps11[0]:.3f},{amps11[2]/amps11[1]:.3f},")
+
+print("Results written to ", f'{odir}/results/NLTE_nh3_results.csv')

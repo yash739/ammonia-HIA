@@ -192,6 +192,7 @@ model.parameters.set_nrays              (12*1*1)            # Number of rays
 model.parameters.set_nspecs             (3)            # Number of species (min. 5)
 model.parameters.set_nlspecs            (1)            # Number of line species
 model.parameters.set_nquads             (20)           # Number of quadrature points
+
 model.parameters.sum_opacity_emissivity_over_all_lines = True
 # model.parameters.one_line_approximation = False
 
@@ -239,9 +240,6 @@ model.compute_spectral_discretisation ()
 model.compute_inverse_line_widths     ()
 model.compute_LTE_level_populations   ()
 model.compute_level_populations_sparse (True, max_NLTE_iterations) #with param args: whether to use Ng-acceleration for faster convergence (True) and max number of NLTE iterations (20)
-
-fcen = model.lines.lineProducingSpecies[0].linedata.frequency
-print(fcen)
 
 fcen = model.lines.lineProducingSpecies[0].linedata.frequency[0]
 vpix = 1e+3   # velocity pixel size [m/s] 
@@ -345,256 +343,89 @@ hdu.header['CRPIX1'] = 1  # FITS convention for first pixel
 fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits')
 hdu.writeto(fits_file, overwrite=True)
 
-import pyspeckit
-# The ammonia fitting wrapper requires a dictionary specifying the transition name
-# (one of the four specified below) and the filename.  Alternately, you can have the
-# dictionary values be pre-loaded Spectrum instances
-filenames = {'oneone':os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits'),
-    'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits')}
-
-# Fit the ammonia spectrum with some reasonable initial guesses.  It is
-# important to crop out extraneous junk and to smooth the data to make the
-# fit proceed at a reasonable pace.
-# spdict1,spectra1 = pyspeckit.wrappers.fitnh3.fitnh3tkin(filenames,crop=False,npeaks=2,guessline='twotwo',rebase=True,tkin=5.65,tex=4.49,column=15.5,fortho=0.3,verbose=True, smooth=False,dobaseline=True,doplot=True,fittype='ammonia')
-
-from astropy import units as u
-import astropy.io.fits as fits
-import numpy as np
-
-h  = 6.62607015e-34          # Planck  [J s]
-k_B  = 1.380649e-23            # Boltzmann [J K⁻¹]
-c  = 2.99792458e8            # speed of light [m s⁻¹]
-
-# Load the spectra from the FITS files
-spec1 = fits.getdata(filenames['oneone'])
-spec2 = fits.getdata(filenames['twotwo'])
-
-# Get velocity axes from FITS headers
-with fits.open(filenames['oneone']) as hdul:
-    hdr1 = hdul[0].header
-    velos1 = hdr1['CRVAL1'] + np.arange(hdr1['NAXIS1']) * hdr1['CDELT1']
-
-with fits.open(filenames['twotwo']) as hdul:
-    hdr2 = hdul[0].header
-    velos2 = hdr2['CRVAL1'] + np.arange(hdr2['NAXIS1']) * hdr2['CDELT1']
-
-# Get rest frequencies from headers
-freq1 = hdr1['RESTFREQ'] 
-freq2 = hdr2['RESTFREQ']
-
-# Convert intensity (assumed in W/(m^2 Hz sr)) to main beam temperature (K)
-def intensity_to_Tmb(v,I, freq):
-    Tmb = (c**2 * I) / (2 * k_B * (freq*(1+v/c))**2)
-    return Tmb
-
-Tmb1 = intensity_to_Tmb(1000*velos1,spec1, freq1)
-Tmb2 = intensity_to_Tmb(1000*velos2,spec2, freq2)
-# now plot the results
-import matplotlib.pyplot as plt
-plt.figure(figsize=(12, 6))
-plt.subplot(2, 1, 1)
-plt.plot(velos1, Tmb1, label='NH3 (1,1)', color='blue')
-plt.title('NH3 (1,1) Spectrum')
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Tmb (K)')
-plt.legend()
-plt.subplot(2, 1, 2)
-plt.plot(velos2, Tmb2, label='NH3 (2,2)', color='red')
-plt.title('NH3 (2,2) Spectrum')
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Tmb (K)')
-plt.legend()
-plt.tight_layout()
-plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.png')
-
-#subtract baseline from the spectra by subtracting a straight line fitted to the edges of the spectra
-
-def subtract_baseline(velos, intensities, edge_fraction=0.1):
-    n = len(velos)
-    edge_n = int(n * edge_fraction)
-    
-    # Select edge points
-    edge_velos = np.concatenate((velos[:edge_n], velos[-edge_n:]))
-    edge_intensities = np.concatenate((intensities[:edge_n], intensities[-edge_n:]))
-    
-    # Fit a linear baseline to the edge points
-    coeffs = np.polyfit(edge_velos, edge_intensities, 1)
-    baseline = np.polyval(coeffs, velos)
-    
-    # Subtract the baseline from the original intensities
-    corrected_intensities = intensities - baseline
-    
-    return corrected_intensities
-Tmb1_corrected = subtract_baseline(velos1, Tmb1)
-Tmb2_corrected = subtract_baseline(velos2, Tmb2)
-plt.subplot(2, 1, 1)
-plt.plot(velos1, Tmb1_corrected, label='NH3 (1,1) Corrected', color='blue')
-plt.title('NH3 (1,1) Spectrum after Baseline Subtraction')
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Tmb (K)')
-plt.legend()
-plt.subplot(2, 1, 2)
-plt.plot(velos2, Tmb2_corrected, label='NH3 (2,2) Corrected', color='red')
-plt.title('NH3 (2,2) Spectrum after Baseline Subtraction')
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Tmb (K)')
-plt.legend()
-plt.tight_layout()
-plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_corrected.png')
 
 """
-NH3 (1,1) and (2,2) line analysis: Gaussian fitting, τ, T_ex, T_rot
+Make a FITS cube CARTA-friendly by:
+ - ensuring BUNIT='Jy/beam'
+ - adding a BEAMS BINTABLE extension with columns BMAJ/BMIN/BPA (degrees)
+   with one row per spectral channel (constant beam across channels).
+
+Input:  a 3D FITS cube with spatial WCS and spectral axis
+Output: <name>_withbeams.fits
 """
+
+from astropy.io import fits
 import numpy as np
-from scipy.optimize import curve_fit, brentq
+from copy import deepcopy
 
-# --------------------------- constants ---------------------------
-h  = 6.62607015e-34          # Planck  [J s]
-k  = 1.380649e-23            # Boltzmann [J K⁻¹]
-c  = 2.99792458e8            # speed of light [m s⁻¹]
-T_BG  = 2.73                 # CMB [K]
-NU_11 = 23.6944955e9         # NH3 (1,1) [Hz]
-NU_22 = 23.7226333e9         # NH3 (2,2) [Hz]
-DELTA_E_K = 42.32            # (2,2)–(1,1) energy gap [K]
+def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite=True):
+    """
+    Add CARTA BEAMS table to FITS cube.
+    """
+    # ================================
+    with fits.open(input_fits, mode="readonly") as hdul:
+        # Find the image HDU (typically primary)
+        img_hdu = None
+        for h in hdul:
+            if isinstance(h, fits.PrimaryHDU) or isinstance(h, fits.ImageHDU):
+                if h.data is not None and h.header.get("NAXIS", 0) >= 2:
+                    img_hdu = h
+                    break
+        if img_hdu is None:
+            raise RuntimeError("No image HDU with data found.")
 
-# --------------------------- models ---------------------------
-def gaussian(v, amp, cen, sig):
-    """Single Gaussian."""
-    return amp * np.exp(-0.5 * ((v - cen)/sig)**2)
+        hdr = deepcopy(img_hdu.header)
+        data = img_hdu.data
 
-def multi_gaussian(v,*pars):
-    """Sum of N Gaussians; pars = [amp1,cen1,sig1, …, ampN,cenN,sigN]."""
-    n = len(pars)//3
-    out = np.zeros_like(v)
-    for i in range(n):
-        a, c, s = pars[3*i :3*i+3]
-        out += gaussian(v, a, c, s)
-    return out 
+        # Get cube size, expect NAXIS3 present for spectral cubes
+        n_spectral = int(hdr.get("NAXIS3", 1))
 
-# --------------------------- fitting ---------------------------
-def fit_five_gaussians(v, tmb, number, p0=None):
-    """Fit 5 Gaussians; returns best-fit parameters (len=15) with positive amplitudes."""
-    if p0 is None:  # crude automatic seed
-        idx_max = np.argmax(tmb)
-        vpk, amp_pk = v[idx_max], tmb[idx_max]
-        width = (v[0] - v[-1]) / 40
-        centres = np.linspace((v[0] + v[-1])/2 - 10*width, (v[0] + v[-1])/2 + 10*width, 5)
-        p0 = []
-        for c in centres:
-            p0 += [max(amp_pk/3, 1e-3), c, width]  # ensure positive initial amplitude
-            # Set bounds: offset free, amplitudes >=0, widths > 0, centers free
-            lower_bounds = [min(tmb), -np.inf]
-            for i in range(15):
-                if i % 3 == 0:      # amplitude
-                    lower_bounds.append(0.0001)
-                elif i % 3 == 2:    # width (sigma)
-                    lower_bounds.append(1e-6)
-                else:               # center
-                    lower_bounds.append(-np.inf)
+        # Pull existing beam from header if present; else use defaults
+        bmaj_deg = float(hdr.get("BMAJ", default_bmaj_deg))
+        bmin_deg = float(hdr.get("BMIN", default_bmin_deg))
+        bpa_deg  = float(hdr.get("BPA",  default_bpa_deg))
 
-            upper_bounds = [np.inf] * 15
+        # Ensure BUNIT is beam-based (CARTA is case-sensitive in some versions)
+        hdr["BUNIT"] = ("Jy/beam", "Brightness unit")
 
-    pars, _ = curve_fit(
-        lambda vv, *pp: multi_gaussian(vv, *pp),
-        v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=200000
-    )
-    return pars
+        # Create BEAMS BINTABLE with one row per channel (constant beam)
+        # Columns must be named exactly BMAJ/BMIN/BPA and are in degrees.
+        col_bmaj = fits.Column(name="BMAJ", format="D", array=np.full(n_spectral, bmaj_deg, dtype=np.float64))
+        col_bmin = fits.Column(name="BMIN", format="D", array=np.full(n_spectral, bmin_deg, dtype=np.float64))
+        col_bpa  = fits.Column(name="BPA",  format="D", array=np.full(n_spectral, bpa_deg,  dtype=np.float64))
+        beams_hdu = fits.BinTableHDU.from_columns([col_bmaj, col_bmin, col_bpa], name="BEAMS")
 
-def comp_areas(pars):
-    """Return arrays of areas (K km/s) for each Gaussian component."""
-    amps  = pars[0::3]
-    sigs  = pars[2::3]
-    return amps * sigs * np.sqrt(2*np.pi)
+        # It can help to record the axes the table spans:
+        beams_hdu.header["EXTNAME"] = "BEAMS"
+        beams_hdu.header["TTYPE1"]  = "BMAJ"
+        beams_hdu.header["TTYPE2"]  = "BMIN"
+        beams_hdu.header["TTYPE3"]  = "BPA"
+        beams_hdu.header["TFORM1"]  = "D"
+        beams_hdu.header["TFORM2"]  = "D"
+        beams_hdu.header["TFORM3"]  = "D"
+        beams_hdu.header["COMMENT"] = "Restoring beam(s) for each spectral channel; units are degrees."
 
-# ------------------------ line diagnostics -----------------------
-def J_nu(T, nu):
-    return (h*nu/k) / (np.exp(h*nu/(k*T)) - 1)
+        # Build output HDUList:
+        # - primary HDU holds the image and updated header (still keep BMAJ/BMIN/BPA for other tools)
+        primary = fits.PrimaryHDU(data=data, header=hdr)
+        out_hdul = fits.HDUList([primary, beams_hdu])
 
-def tau_from_sat(Ts, Tm, a_s=0.22):
-    """Solve τ from T_s/T_m ratio (inner satellite)."""
-    f = lambda tau: (1 - np.exp(-a_s*tau))/(1 - np.exp(-tau)) - Ts/Tm
-    return brentq(f, 1e-4, 100)
+        out_name = input_fits.replace(".fits", "_withbeams.fits")
+        out_hdul.writeto(out_name, overwrite=overwrite)
 
-def tex_from_tau(Tmb_peak, tau, nu, method= 'brentq'):
-    if method == 'brentq':
-        """Solve T_ex from radiative-transfer equation."""
-        Jbg = J_nu(T_BG, nu)
-        f = lambda Tex: (J_nu(Tex, nu) - Jbg)*(1 - np.exp(-tau)) - Tmb_peak
-        #plot f at a range of values
-        import matplotlib.pyplot as plt
-        Tex_vals = np.linspace(0, 100, 100)
-        plt.plot(Tex_vals, f(Tex_vals), label='f(Tex)')
-        plt.xlabel('T_ex (K)')
-        plt.ylabel('f(T_ex)')
-        plt.title('Function for T_ex')
-        plt.show()
-        return brentq(f, 1e-4, 100)
-    elif method == 'simple':
-        return Tmb_peak/(1-np.exp(-tau)) + T_BG
+    print(f"✅ Wrote: {out_name}")
+    print("   Added BEAMS table and set BUNIT='Jy/beam'.")
 
-def T_rot(int11, int22):
-    ratio = (int11/int22) * (9/5)          # statistical weight factor
-    return DELTA_E_K / np.log(ratio)
+# ======== USER SETTINGS ======== # 
+# We need to discuss how to optimize this, but I have set it to some reasonable value based on your existing header BMAJ/BMIN/BP
+default_bmaj_deg = 0.00027778 * 2      # ~2" as an example -> 2 * (1"/deg) in deg
+default_bmin_deg = 0.00027778 * 2
+default_bpa_deg  = 0.0                 # degrees (E of N)
+overwrite = True
+#usage on above two cubes
+input_fits = f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits'
+add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
+input_fits = f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits'
+add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
 
-# ------------------------------- main ---------------------------
-def analyse_pair(v11, t11, v22, t22,
-                 main_idx11=2, sat_idx11=1, a_s=0.22):
-    # ----- fit spectra
-    p11 = fit_five_gaussians(v11, t11,'one')
-    p22 = fit_five_gaussians(v22, t22,'two')
-    print(p11)
-    print(p22)
-    #plot the fitted spectra
-    amps11  = p11[0::3]; cents11=p11[1::3];  sigs11 = p11[2::3]*1000
-    amps22  = p22[0::3]; cents22=p22[1::3];  sigs22 = p22[2::3]*1000
 
-    #plot the fitted spectra
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(12, 6))
-    plt.subplot(2, 1, 1)
-    plt.plot(v11, t11, label='NH3 (1,1) Data', color='blue')
-    plt.plot(v11, multi_gaussian(v11, *p11), label='Fit (1,1)', color='orange')
-    plt.title('NH3 (1,1) Spectrum with Fit')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.subplot(2, 1, 2)
-    plt.plot(v22, t22, label='NH3 (2,2) Data', color='red')
-    plt.plot(v22, multi_gaussian(v22, *p22), label='Fit (2,2)', color='green')
-    plt.title('NH3 (2,2) Spectrum with Fit')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_fit.png')
-
-    # ----- integrated intensities (K km/s)
-    I11 = np.sum(comp_areas(p11))
-    I22 = np.sum(comp_areas(p22))
-
-    # ----- optical depth via satellite ratio
-    tau_11 = tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s)
-
-    # ----- excitation temperature
-    Tex_11 = tex_from_tau(amps11[main_idx11], tau_11, NU_11, method='brentq')
-
-    # ----- rotational temperature
-    Trot = T_rot(I11, I22)
-
-    # ----- kinetic temperature
-    Tkin = Trot /(1-(Trot/42)*np.log(1+1.1*np.exp(-16/Trot)))
-
-    return dict(I11=I11, I22=I22, tau_11=tau_11, Tex_11=Tex_11,
-                Trot=Trot, Tkin=Tkin, fit_params_11=p11, fit_params_22=p22)
-
-res = analyse_pair(velos1, Tmb1_corrected, velos2, Tmb2_corrected,
-                       main_idx11=2,
-                       sat_idx11=4,
-                       a_s=0.03)
-
-print(f"∫Tmb dv (1,1): {res['I11']:.3f} K km/s")
-print(f"∫Tmb dv (2,2): {res['I22']:.3f} K km/s")
-print(f"τ(1,1)       : {res['tau_11']:.2f}")
-print(f"T_ex (1,1)   : {res['Tex_11']:.2f} K")
-print(f"T_rot        : {res['Trot']:.2f} K")
-print(f"T_kin        : {res['Tkin']:.2f} K")
