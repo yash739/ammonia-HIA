@@ -292,7 +292,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     model.compute_spectral_discretisation(fmin, fmax, 500)
     model.compute_image_new(ray_nr, 16, 16)
 
-    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits')
+    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
 
     fig = plot.image_channel(model, [110, 200, 249, 300, 360], [1, 5])
 
@@ -303,7 +303,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
 
     velos1 = velos
     plt.plot(velos1, Is)
-    plt.savefig(f'{odir}/images/NLTE_nh3_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.png')
+    plt.savefig(f'{odir}/images/NLTE_nh3_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
 
     # Save spectrum FITS
     hdu = fits.PrimaryHDU(Is)
@@ -315,7 +315,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     hdu.header['RESTFREQ'] = fcen
     hdu.header['CRPIX1'] = 1
 
-    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits')
+    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
     hdu.writeto(fits_file, overwrite=True)
 
     # --- Repeat for second line ---
@@ -328,7 +328,8 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     model.compute_image_new(ray_nr, 16, 16)
 
     fig = plot.image_channel(model, [110, 200, 249, 300, 360], [1, 5])
-    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{vturb}_{T_cloud}.fits')
+    
+    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
 
     velos = (np.array(model.images[-1].freqs) - fcen) / fcen * 3e8 / 1000
     intensities = np.array(model.images[-1].I)[:, :]
@@ -336,7 +337,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
 
     velos2 = velos
     plt.plot(velos2, Is)
-    plt.savefig(f'{odir}/images/NLTE_nh3_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.png')
+    plt.savefig(f'{odir}/images/NLTE_nh3_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
 
     # Save second FITS
     hdu = fits.PrimaryHDU(Is)
@@ -348,7 +349,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     hdu.header['RESTFREQ'] = fcen
     hdu.header['CRPIX1'] = 1
 
-    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits')
+    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
     hdu.writeto(fits_file, overwrite=True)
 
     print("✅ Model run complete.")
@@ -368,9 +369,9 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     default_bpa_deg  = 0.0                 # degrees (E of N)
     overwrite = True
     #usage on above two cubes
-    input_fits = f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits'
+    input_fits = f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'
     add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
-    input_fits = f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity}_{vturb}_{T_cloud}.fits'
+    input_fits = f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'
     add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
 
 # Allow standalone run
@@ -392,14 +393,14 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     """
 
     # Subfolder for this model's results
-    subfolder = f"X{XNH3}_n{numberdensity:.0e}_v{vturb}_T{T_cloud}"
+    subfolder = f"X{XNH3}_n{numberdensity:.2e}_v{vturb}_T{T_cloud}"
     image_subdir = os.path.join(odir, "images", subfolder)
     os.makedirs(image_subdir, exist_ok=True)
 
     # Spectra FITS filenames
     filenames = {
-        'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits'),
-        'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.fits')
+        'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'),
+        'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
     }
 
     # Load the spectra from FITS files
@@ -446,8 +447,8 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     plt.ylabel('Tmb (K)')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.png')
-    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}.png'))
+    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
+    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png'))
     plt.close()
 
     # Subtract baseline
@@ -477,8 +478,8 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     plt.ylabel('Tmb (K)')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_corrected.png')
-    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_corrected.png'))
+    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_corrected.png')
+    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_corrected.png'))
     plt.close()
 
     # ---------------------------
@@ -528,26 +529,26 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
                             v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=200000)
         return pars
 
-    def comp_areas(pars):
-        amps  = pars[0::3]
-        sigs  = pars[2::3]
-        return amps * sigs * np.sqrt(2*np.pi)
+    # def comp_areas(pars):
+    #     amps  = pars[0::3]
+    #     sigs  = pars[2::3]
+    #     return amps * sigs * np.sqrt(2*np.pi)
 
-    def J_nu(T, nu):
-        return (h*nu/k) / (np.exp(h*nu/(k*T)) - 1)
+    # def J_nu(T, nu):
+    #     return (h*nu/k) / (np.exp(h*nu/(k*T)) - 1)
 
-    def tau_from_sat(Ts, Tm, a_s=0.22):
-        f = lambda tau: (1 - np.exp(-a_s*tau))/(1 - np.exp(-tau)) - Ts/Tm
-        return brentq(f, 1e-4, 100)
+    # def tau_from_sat(Ts, Tm, a_s=0.22):
+    #     f = lambda tau: (1 - np.exp(-a_s*tau))/(1 - np.exp(-tau)) - Ts/Tm
+    #     return brentq(f, 1e-4, 100)
 
-    def tex_from_tau(Tmb_peak, tau, nu):
-        Jbg = J_nu(T_BG, nu)
-        f = lambda Tex: (J_nu(Tex, nu) - Jbg)*(1 - np.exp(-tau)) - Tmb_peak
-        return brentq(f, 1e-4, 100)
+    # def tex_from_tau(Tmb_peak, tau, nu):
+    #     Jbg = J_nu(T_BG, nu)
+    #     f = lambda Tex: (J_nu(Tex, nu) - Jbg)*(1 - np.exp(-tau)) - Tmb_peak
+    #     return brentq(f, 1e-4, 100)
 
-    def T_rot(int11, int22):
-        ratio = (int11/int22) * (9/5)
-        return DELTA_E_K / np.log(ratio)
+    # def T_rot(int11, int22):
+    #     ratio = (int11/int22) * (9/5)
+    #     return DELTA_E_K / np.log(ratio)
 
     def analyse_pair(v11, t11, v22, t22,
                      main_idx11=2, sat_idx11=4, a_s=0.03):
@@ -565,23 +566,24 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
         plt.plot(v22, t22, label='NH3 (2,2) Data', color='red')
         plt.plot(v22, multi_gaussian(v22, *p22), label='Fit (2,2)', color='green')
         plt.tight_layout()
-        plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_fit.png')
-        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.0e}_{vturb}_{T_cloud}_fit.png'))
+        plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_fit.png')
+        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_fit.png'))
         plt.close()
 
-        I11 = np.sum(comp_areas(p11))
-        I22 = np.sum(comp_areas(p22))
-        tau_11 = tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s)
-        Tex_11 = tex_from_tau(amps11[main_idx11], tau_11, NU_11)
-        Trot = T_rot(I11, I22)
-        Tkin = Trot /(1-(Trot/42)*np.log(1+1.1*np.exp(-16/Trot)))
-        return dict(I11=I11, I22=I22, tau_11=tau_11, Tex_11=Tex_11,
-                    Trot=Trot, Tkin=Tkin, fit_params_11=p11, fit_params_22=p22)
+        # I11 = np.sum(comp_areas(p11))
+        # I22 = np.sum(comp_areas(p22))
+        # tau_11 = tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s)
+        # Tex_11 = tex_from_tau(amps11[main_idx11], tau_11, NU_11)
+        # Trot = T_rot(I11, I22)
+        # Tkin = Trot /(1-(Trot/42)*np.log(1+1.1*np.exp(-16/Trot)))
+        # return dict(I11=I11, I22=I22, tau_11=tau_11, Tex_11=Tex_11,
+        #             Trot=Trot, Tkin=Tkin, fit_params_11=p11, fit_params_22=p22)
+        return dict(fit_params_11=p11, fit_params_22=p22)
 
     res = analyse_pair(velos1, Tmb1_corrected, velos2, Tmb2_corrected)
 
     amps11 = res['fit_params_11'][0:15:3]
-
+    print("NH3 (1,1) hyperfine amplitudes:", amps11)
     results_file = f'{odir}/results/NLTE_nh3_results.csv'
     os.makedirs(os.path.dirname(results_file), exist_ok=True)
 

@@ -17,7 +17,7 @@ def run_model_grid():
     and automatically analyse spectra afterwards.
     """
 
-    max_NLTE = 20  # constant for all runs
+    max_NLTE = 25  # constant for all runs
 
     # -----------------------------
     # Generate parameter combinations
@@ -82,10 +82,10 @@ def run_model_grid():
 # -----------------------------
 # Define parameter ranges via linspace
 # -----------------------------
-T_cloud_values = np.linspace(20, 50, 4)          # K
-XNH3_values = np.linspace(1e-8, 1e-6, 5)         # abundance
-numberdensity_values = np.linspace(1e6, 1e8, 5)  # cm^-3
-vturb_values = np.linspace(50, 200, 5)           # m/s
+T_cloud_values = [30,40,50]                                # K
+XNH3_values = np.logspace(-8, -6, num= 5, base=10)         # abundance
+numberdensity_values = np.logspace(5, 7, num=5, base=10)   # cm^-3
+vturb_values = [100]                                       # m/s
 
 if __name__ == "__main__":
     run_model_grid()
