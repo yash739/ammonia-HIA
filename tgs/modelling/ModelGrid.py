@@ -10,7 +10,6 @@ from nh3_NLTE_sphere import run_model, analyse_spectra
 import numpy as np
 import itertools
 
-
 def run_model_grid():
     """
     Run NH3 NLTE models in a grid fashion over selected parameters
@@ -28,6 +27,7 @@ def run_model_grid():
         len(T_cloud_values)
         * len(XNH3_values)
         * len(numberdensity_values)
+        * len(radius_values)
         * len(vturb_values)
     )
 
@@ -36,7 +36,7 @@ def run_model_grid():
     # -----------------------------
     # Loop through the grid
     # -----------------------------
-    for i, (T_cloud, XNH3, numberdensity, vturb) in enumerate(grid, 1):
+    for i, (T_cloud, XNH3, numberdensity, radius_value, vturb) in enumerate(grid, 1):
 
         print(f"========== Model {i}/{total} ==========")
         print(f"T_cloud       = {T_cloud:.2f} K")
@@ -52,6 +52,7 @@ def run_model_grid():
                 numberdensity=float(numberdensity),
                 vturb=float(vturb),
                 T_cloud=float(T_cloud),
+                radius_sphere=float(radius_value),
                 max_NLTE=max_NLTE,
             )
         except Exception as e:
@@ -69,6 +70,9 @@ def run_model_grid():
                 numberdensity=float(numberdensity),
                 vturb=float(vturb),
                 T_cloud=float(T_cloud),
+                radius_sphere=float(radius_value),
+                vturb=float(vturb),
+                info=info
             )
         except Exception as e:
             print(f"Analysis FAILED at:")
