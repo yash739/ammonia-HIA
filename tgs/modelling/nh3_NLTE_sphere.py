@@ -25,7 +25,6 @@ import astropy.io.fits as fits                     # For FITS output
 wdir = "/home/yasho379/magritte_rebuilt/tgs/"
 odir = "/home/yasho379/magritte_rebuilt/output"
 
-
 def density(rr, rho_cloud, r_in, r_out):
     """
     Density profile function.
@@ -151,7 +150,7 @@ def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, defa
         print(f" Wrote: {out_name}")
         print("  Added BEAMS table and set BUNIT='Jy/beam'.")
 
-def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
+def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16):
     """
     Main function to build and run the NH3 NLTE sphere model.
     """
@@ -167,9 +166,9 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     m_H2 = 2.01588 * constants.u.si.value
 
     rho_cloud = numberdensity * 1.0E6 * m_H2   # [kg/m^3] for magritte purposes
-    r_out = 5000.0 * constants.au.si.value
-    r_in = 100.0 * constants.au.si.value
-    resolution = 20
+    r_out = radius_sphere/100  # input given in [cm], converted to [m]
+    r_in = 0 * constants.au.si.value
+    resolution = 50
 
     # Define the desired background mesh, a (75 x 75 x 75) cube.
     xs = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
@@ -258,25 +257,25 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     setup.set_quadrature(model)
 
     model.write()
+    print(f" Wrote model file: {model_file}")
+    # # --- YT Visualization ---
+    # ds = yt.load_unstructured_mesh(
+    #     connectivity=delaunay.simplices.astype(np.int64),
+    #     coordinates=delaunay.points.astype(np.float64) * 100.0,
+    #     node_data={('connect1', 'n'): nNH3[delaunay.simplices].astype(np.float64)}
+    # )
 
-    # --- YT Visualization ---
-    ds = yt.load_unstructured_mesh(
-        connectivity=delaunay.simplices.astype(np.int64),
-        coordinates=delaunay.points.astype(np.float64) * 100.0,
-        node_data={('connect1', 'n'): nNH3[delaunay.simplices].astype(np.float64)}
-    )
-
-    sl = yt.SlicePlot(ds, 'z', ('connect1', 'n'))
-    sl.set_cmap(('connect1', 'n'), 'magma')
-    sl.zoom(0.9)
+    # sl = yt.SlicePlot(ds, 'z', ('connect1', 'n'))
+    # sl.set_cmap(('connect1', 'n'), 'magma')
+    # sl.zoom(0.9)
 
     # --- NLTE Computation ---
     model = magritte.Model(model_file)
     model.compute_spectral_discretisation()
     model.compute_inverse_line_widths()
     model.compute_LTE_level_populations()
-    model.compute_level_populations_sparse(True, max_NLTE)
-
+    info = model.compute_level_populations_sparse(True, max_NLTE)
+    print(info)
     # --- Frequency Range ---
     fcen = model.lines.lineProducingSpecies[0].linedata.frequency[0]
     vpix = 1e+3
@@ -292,7 +291,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     model.compute_spectral_discretisation(fmin, fmax, 500)
     model.compute_image_new(ray_nr, 16, 16)
 
-    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
+    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
 
     fig = plot.image_channel(model, [110, 200, 249, 300, 360], [1, 5])
 
@@ -303,7 +302,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
 
     velos1 = velos
     plt.plot(velos1, Is)
-    plt.savefig(f'{odir}/images/NLTE_nh3_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
+    plt.savefig(f'{odir}/images/NLTE_nh3_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png')
 
     # Save spectrum FITS
     hdu = fits.PrimaryHDU(Is)
@@ -315,7 +314,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     hdu.header['RESTFREQ'] = fcen
     hdu.header['CRPIX1'] = 1
 
-    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
+    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
     hdu.writeto(fits_file, overwrite=True)
 
     # --- Repeat for second line ---
@@ -329,7 +328,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
 
     fig = plot.image_channel(model, [110, 200, 249, 300, 360], [1, 5])
     
-    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
+    tools.save_fits(model, filename=f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
 
     velos = (np.array(model.images[-1].freqs) - fcen) / fcen * 3e8 / 1000
     intensities = np.array(model.images[-1].I)[:, :]
@@ -337,7 +336,7 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
 
     velos2 = velos
     plt.plot(velos2, Is)
-    plt.savefig(f'{odir}/images/NLTE_nh3_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
+    plt.savefig(f'{odir}/images/NLTE_nh3_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png')
 
     # Save second FITS
     hdu = fits.PrimaryHDU(Is)
@@ -349,10 +348,10 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     hdu.header['RESTFREQ'] = fcen
     hdu.header['CRPIX1'] = 1
 
-    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
+    fits_file = os.path.join(wdir, f'{odir}/fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
     hdu.writeto(fits_file, overwrite=True)
 
-    print("✅ Model run complete.")
+    print("Model run complete.")
     """
     Make a FITS cube CARTA-friendly by:
     - ensuring BUNIT='Jy/beam'
@@ -369,10 +368,11 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20):
     default_bpa_deg  = 0.0                 # degrees (E of N)
     overwrite = True
     #usage on above two cubes
-    input_fits = f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'
+    input_fits = f'{odir}/fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'
     add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
-    input_fits = f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'
+    input_fits = f'{odir}/fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'
     add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite)
+    return info
 
 # Allow standalone run
 if __name__ == "__main__":
@@ -383,7 +383,7 @@ import astropy.io.fits as fits
 import numpy as np
 from scipy.optimize import curve_fit, brentq
 
-def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
+def analyse_spectra(XNH3, numberdensity, vturb, T_cloud, radius_sphere, info ):
     """
     Analyse the NH3 (1,1) and (2,2) spectra produced by Magritte NLTE model.
 
@@ -393,14 +393,14 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     """
 
     # Subfolder for this model's results
-    subfolder = f"X{XNH3}_n{numberdensity:.2e}_v{vturb}_T{T_cloud}"
+    subfolder = f"X{XNH3}_n{numberdensity:.2e}_{radius_sphere:.2e}_v{vturb}_T{T_cloud}"
     image_subdir = os.path.join(odir, "images", subfolder)
     os.makedirs(image_subdir, exist_ok=True)
 
     # Spectra FITS filenames
     filenames = {
-        'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits'),
-        'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.fits')
+        'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'),
+        'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
     }
 
     # Load the spectra from FITS files
@@ -429,6 +429,10 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
         Tmb = (c**2 * I) / (2 * k_B * (freq*(1+v/c))**2)
         return Tmb
 
+    def escape_probability(vturb,radius_sphere, nH2, XNH3):
+        N_NH3 = nH2 * XNH3 * radius_sphere /vturb # Column density per velocity of NH3 [m^-2]
+        return N_NH3
+
     Tmb1 = intensity_to_Tmb(1000*velos1, spec1, freq1)
     Tmb2 = intensity_to_Tmb(1000*velos2, spec2, freq2)
 
@@ -447,9 +451,8 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     plt.ylabel('Tmb (K)')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png')
-    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}.png'))
-    plt.close()
+    #plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png'))
+    #plt.close()
 
     # Subtract baseline
     def subtract_baseline(velos, intensities, edge_fraction=0.1):
@@ -478,8 +481,7 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
     plt.ylabel('Tmb (K)')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_corrected.png')
-    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_corrected.png'))
+    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_corrected.png'))
     plt.close()
 
     # ---------------------------
@@ -565,9 +567,11 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
         plt.subplot(2, 1, 2)
         plt.plot(v22, t22, label='NH3 (2,2) Data', color='red')
         plt.plot(v22, multi_gaussian(v22, *p22), label='Fit (2,2)', color='green')
+        # plt.annotate(f'tau_11 = {tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s):.2f}')
+        plt.annotate(f'N_NH3 = {escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.2e} m^-2', xy=(0, -5), xycoords='axes points')
         plt.tight_layout()
-        plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_fit.png')
-        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{vturb}_{T_cloud}_fit.png'))
+        # plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png')
+        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png'))
         plt.close()
 
         # I11 = np.sum(comp_areas(p11))
@@ -584,13 +588,13 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
 
     amps11 = res['fit_params_11'][0:15:3]
     print("NH3 (1,1) hyperfine amplitudes:", amps11)
-    results_file = f'{odir}/results/NLTE_nh3_results.csv'
+    results_file = f'{odir}/results/NLTE_nh3_results_stutzki.csv'
     os.makedirs(os.path.dirname(results_file), exist_ok=True)
-
     header = (
         "XNH3,numberdensity,vturb,T_cloud,"
-        "A_OSL,A_ISL,A_MAIN,A_ISH,A_OSH,"
-        "R_OSH_MAIN,R_ISH_ISL,R_ISL_MAIN,R_ISL_ISH\n"
+        "A_10,A_21,A_MAIN,A_12,A_01,"
+        "R_01_MAIN,R_10_MAIN,R_21_MAIN,R_12_MAIN,"
+        "N_NH3\n"
     )
 
     if not os.path.exists(results_file) or os.stat(results_file).st_size == 0:
@@ -601,7 +605,7 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud):
         f.write(
             f"{XNH3},{numberdensity},{vturb},{T_cloud},"
             f"{amps11[0]:.3f},{amps11[1]:.3f},{amps11[2]:.3f},{amps11[3]:.3f},{amps11[4]:.3f},"
-            f"{amps11[4]/amps11[2]:.3f},{amps11[3]/amps11[1]:.3f},{amps11[1]/amps11[2]:.3f},{amps11[1]/amps11[3]:.3f}\n"
+            f"{amps11[4]/amps11[2]:.3f},{amps11[0]/amps11[2]:.3f},{amps11[1]/amps11[2]:.3f},{amps11[3]/amps11[2]:.3f},"
+            f"{escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.3e}\n"
         )
-
     print(f"Results written to {results_file}")
