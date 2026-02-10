@@ -16,12 +16,12 @@ def run_model_grid():
     and automatically analyse spectra afterwards.
     """
 
-    max_NLTE = 25  # constant for all runs
+    max_NLTE = 100  # constant for all runs
 
     # -----------------------------
     # Generate parameter combinations
     # -----------------------------
-    grid = itertools.product(T_cloud_values, XNH3_values, numberdensity_values, vturb_values)
+    grid = itertools.product(T_cloud_values, XNH3_values, numberdensity_values, radius_values, vturb_values)
 
     total = (
         len(T_cloud_values)
@@ -42,6 +42,7 @@ def run_model_grid():
         print(f"T_cloud       = {T_cloud:.2f} K")
         print(f"XNH3          = {XNH3:.2e}")
         print(f"numberdensity = {numberdensity:.2e} cm^-3")
+        print(f"radius        = {radius_value:.2e} cm")
         print(f"vturb         = {vturb:.2f} m/s")
         print("----------------------------------------")
 
@@ -68,11 +69,9 @@ def run_model_grid():
             analyse_spectra(
                 XNH3=float(XNH3),
                 numberdensity=float(numberdensity),
-                vturb=float(vturb),
                 T_cloud=float(T_cloud),
                 radius_sphere=float(radius_value),
                 vturb=float(vturb),
-                info=info
             )
         except Exception as e:
             print(f"Analysis FAILED at:")
@@ -84,12 +83,13 @@ def run_model_grid():
     print("\nAll grid models + analyses finished.\n")
 
 # -----------------------------
-# Define parameter ranges via linspace
+# Define parameter ranges via logspace
 # -----------------------------
-T_cloud_values = [30,40,50]                                # K
-XNH3_values = np.logspace(-8, -6, num= 5, base=10)         # abundance
-numberdensity_values = np.logspace(5, 7, num=5, base=10)   # cm^-3
-vturb_values = [100]                                       # m/s
+T_cloud_values = [36,18]     # K
+XNH3_values = [1e-8,1e-9]            # abundance
+numberdensity_values = np.logspace(3.5,8.5,5, base=10)   # cm^-3
+radius_values = np.logspace(17,22,10,base=10)          # cm
+vturb_values = [100]            # m/s
 
 if __name__ == "__main__":
     run_model_grid()
