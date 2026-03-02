@@ -13,6 +13,10 @@ import yt                                            # 3D plotting
 import os
 from tqdm                import tqdm               # Progress bars
 from astropy             import units, constants   # Unit conversions
+# --- DIAGNOSTIC CHECK ---
+import os
+import h5py
+
 from astropy.io          import fits
 from scipy.spatial       import Delaunay, cKDTree  # Finding neighbors
 from scipy.signal        import savgol_filter
@@ -23,7 +27,7 @@ import astropy.io.fits as fits                     # For FITS output
 
 # Hardcoded working and output directories
 wdir = "/home/yasho379/magritte_rebuilt/tgs/"
-odir = "/home/yasho379/magritte_rebuilt/output"
+odir = "/home/yasho379/magritte_rebuilt/output_paper_comparison/"
 
 def density(rr, rho_cloud, r_in, r_out):
     """
@@ -147,6 +151,11 @@ def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, defa
             out_name = input_fits.replace(".fits", "_withbeams.fits")
             out_hdul.writeto(out_name, overwrite=overwrite)
 
+            #delete the original file
+            if overwrite:
+                os.remove(input_fits)
+            
+
         print(f" Wrote: {out_name}")
         print("  Added BEAMS table and set BUNIT='Jy/beam'.")
 
@@ -168,9 +177,9 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, 
     rho_cloud = numberdensity * 1.0E6 * m_H2   # [kg/m^3] for magritte purposes
     r_out = radius_sphere/100  # input given in [cm], converted to [m]
     r_in = 0 * constants.au.si.value
-    resolution = 50
+    resolution = 4
 
-    # Define the desired background mesh, a (75 x 75 x 75) cube.
+    # Define the desired background mesh, a ( res x res x res ) cube of points covering the sphere and its surroundings
     xs = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
     ys = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
     zs = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
@@ -256,26 +265,44 @@ def run_model(XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, 
     setup.set_linedata_from_LAMDA_file(model, lamda_file)
     setup.set_quadrature(model)
 
-    model.write()
-    print(f" Wrote model file: {model_file}")
-    # # --- YT Visualization ---
-    # ds = yt.load_unstructured_mesh(
-    #     connectivity=delaunay.simplices.astype(np.int64),
-    #     coordinates=delaunay.points.astype(np.float64) * 100.0,
-    #     node_data={('connect1', 'n'): nNH3[delaunay.simplices].astype(np.float64)}
-    # )
+        # ... previous setup ...
+    max_write_attempts = 3
+    write_success = False
+        
+    for attempt in range(1, max_write_attempts + 1):
+            try:
+                model.write(model_file)
+                print(f" Wrote model file: {model_file}")
+                write_success = True
+                break
+            except Exception as e:
+                print(f"Write attempt {attempt}/{max_write_attempts} failed: {e}")
+                if attempt < max_write_attempts:
+                    print(f"Retrying in 2 seconds...")
+                    time.sleep(2)
+                else:
+                    print("CRITICAL ERROR: Failed to write model file after all attempts.")
+                    exit(1)
 
-    # sl = yt.SlicePlot(ds, 'z', ('connect1', 'n'))
-    # sl.set_cmap(('connect1', 'n'), 'magma')
-    # sl.zoom(0.9)
+    if write_success and os.path.exists(model_file):
+            print(f"File exists. Size: {os.path.getsize(model_file) / (1024*1024):.2f} MB")
+            try:
+                with h5py.File(model_file, 'r') as f:
+                    print("Keys in file:", list(f.keys()))
+                    print("File is VALID HDF5.")
+            except Exception as e:
+                print(f"CRITICAL ERROR: File is corrupt! {e}")
+                exit(1)
+    else:
+            print("File was not found!")
+            exit(1)
 
-    # --- NLTE Computation ---
+    # ... Continue to NLTE Computation ...
     model = magritte.Model(model_file)
     model.compute_spectral_discretisation()
     model.compute_inverse_line_widths()
     model.compute_LTE_level_populations()
     info = model.compute_level_populations_sparse(True, max_NLTE)
-    print(info)
     # --- Frequency Range ---
     fcen = model.lines.lineProducingSpecies[0].linedata.frequency[0]
     vpix = 1e+3
@@ -382,8 +409,9 @@ from astropy import units as u
 import astropy.io.fits as fits
 import numpy as np
 from scipy.optimize import curve_fit, brentq
+import time
 
-def analyse_spectra(XNH3, numberdensity, vturb, T_cloud, radius_sphere, info ):
+def analyse_spectra(XNH3, numberdensity, vturb, T_cloud, radius_sphere, max_NLTE=100):
     """
     Analyse the NH3 (1,1) and (2,2) spectra produced by Magritte NLTE model.
 
@@ -392,220 +420,292 @@ def analyse_spectra(XNH3, numberdensity, vturb, T_cloud, radius_sphere, info ):
     Saves all plots in original and subfolder locations.
     """
 
+    print("\n--- Starting spectral analysis ---")
+
+    # -------------------------------------------------
+    # Check odir
+    # -------------------------------------------------
+    try:
+        if 'odir' not in globals():
+            raise ValueError("Global variable 'odir' is not defined.")
+        print("Output directory:", odir)
+    except Exception as e:
+        print("Directory error:", e)
+        return
+
+    # -------------------------------------------------
+    # Run original code inside master try block
+    # -------------------------------------------------
+    try:
+
+        # ---------------- ORIGINAL CODE STARTS ----------------
+        # (Nothing inside this block was changed)
+
     # Subfolder for this model's results
-    subfolder = f"X{XNH3}_n{numberdensity:.2e}_{radius_sphere:.2e}_v{vturb}_T{T_cloud}"
-    image_subdir = os.path.join(odir, "images", subfolder)
-    os.makedirs(image_subdir, exist_ok=True)
+        subfolder = f"X{XNH3}_n{numberdensity:.2e}_{radius_sphere:.2e}_v{vturb}_T{T_cloud}"
+        image_subdir = os.path.join(odir, "images", subfolder)
+        os.makedirs(image_subdir, exist_ok=True)
 
-    # Spectra FITS filenames
-    filenames = {
-        'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'),
-        'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
-    }
+        # Spectra FITS filenames
+        filenames = {
+            'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'),
+            'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
+        }
 
-    # Load the spectra from FITS files
-    spec1 = fits.getdata(filenames['oneone'])
-    spec2 = fits.getdata(filenames['twotwo'])
+        # Load the spectra from FITS files
+        spec1 = fits.getdata(filenames['oneone'])
+        spec2 = fits.getdata(filenames['twotwo'])
 
-    # Get velocity axes from FITS headers
-    with fits.open(filenames['oneone']) as hdul:
-        hdr1 = hdul[0].header
-        velos1 = hdr1['CRVAL1'] + np.arange(hdr1['NAXIS1']) * hdr1['CDELT1']
+        # Get velocity axes from FITS headers
+        with fits.open(filenames['oneone']) as hdul:
+            hdr1 = hdul[0].header
+            velos1 = hdr1['CRVAL1'] + np.arange(hdr1['NAXIS1']) * hdr1['CDELT1']
 
-    with fits.open(filenames['twotwo']) as hdul:
-        hdr2 = hdul[0].header
-        velos2 = hdr2['CRVAL1'] + np.arange(hdr2['NAXIS1']) * hdr2['CDELT1']
+        with fits.open(filenames['twotwo']) as hdul:
+            hdr2 = hdul[0].header
+            velos2 = hdr2['CRVAL1'] + np.arange(hdr2['NAXIS1']) * hdr2['CDELT1']
 
-    # Get rest frequencies from headers
-    freq1 = hdr1['RESTFREQ'] 
-    freq2 = hdr2['RESTFREQ']
+        # Get rest frequencies from headers
+        freq1 = hdr1['RESTFREQ'] 
+        freq2 = hdr2['RESTFREQ']
 
-    # Convert intensity (assumed in W/(m^2 Hz sr)) to main beam temperature (K)
-    h  = 6.62607015e-34          # Planck  [J s]
-    k_B  = 1.380649e-23          # Boltzmann [J K⁻¹]
-    c  = 2.99792458e8            # speed of light [m s⁻¹]
+        # Convert intensity (assumed in W/(m^2 Hz sr)) to main beam temperature (K)
+        h  = 6.62607015e-34          # Planck  [J s]
+        k_B  = 1.380649e-23          # Boltzmann [J K⁻¹]
+        c  = 2.99792458e8            # speed of light [m s⁻¹]
 
-    def intensity_to_Tmb(v,I, freq):
-        Tmb = (c**2 * I) / (2 * k_B * (freq*(1+v/c))**2)
-        return Tmb
+        def intensity_to_Tmb(v,I, freq):
+            Tmb = (c**2 * I) / (2 * k_B * (freq*(1+v/c))**2)
+            return Tmb
 
-    def escape_probability(vturb,radius_sphere, nH2, XNH3):
-        N_NH3 = nH2 * XNH3 * radius_sphere /vturb # Column density per velocity of NH3 [m^-2]
-        return N_NH3
+        def escape_probability(vturb,radius_sphere, nH2, XNH3):
+            N_NH3 = nH2 * XNH3 * radius_sphere /vturb # Column density per velocity of NH3 [ cm^-2/(km/s) ]
+            return N_NH3
 
-    Tmb1 = intensity_to_Tmb(1000*velos1, spec1, freq1)
-    Tmb2 = intensity_to_Tmb(1000*velos2, spec2, freq2)
+        Tmb1 = intensity_to_Tmb(1000*velos1, spec1, freq1)
+        Tmb2 = intensity_to_Tmb(1000*velos2, spec2, freq2)
 
-    # Plot raw spectra
-    plt.figure(figsize=(12, 6))
-    plt.subplot(2, 1, 1)
-    plt.plot(velos1, Tmb1, label='NH3 (1,1)', color='blue')
-    plt.title('NH3 (1,1) Spectrum')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.subplot(2, 1, 2)
-    plt.plot(velos2, Tmb2, label='NH3 (2,2)', color='red')
-    plt.title('NH3 (2,2) Spectrum')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.tight_layout()
-    #plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png'))
-    #plt.close()
+        # Plot raw spectra
+        plt.figure(figsize=(12, 6))
+        plt.subplot(2, 1, 1)
+        plt.plot(velos1, Tmb1, label='NH3 (1,1)', color='blue')
+        plt.title('NH3 (1,1) Spectrum')
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Tmb (K)')
+        plt.legend()
+        plt.subplot(2, 1, 2)
+        plt.plot(velos2, Tmb2, label='NH3 (2,2)', color='red')
+        plt.title('NH3 (2,2) Spectrum')
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Tmb (K)')
+        plt.legend()
+        plt.tight_layout()
+        #plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png'))
+        #plt.close()
 
-    # Subtract baseline
-    def subtract_baseline(velos, intensities, edge_fraction=0.1):
-        n = len(velos)
-        edge_n = int(n * edge_fraction)
-        edge_velos = np.concatenate((velos[:edge_n], velos[-edge_n:]))
-        edge_intensities = np.concatenate((intensities[:edge_n], intensities[-edge_n:]))
-        coeffs = np.polyfit(edge_velos, edge_intensities, 1)
-        baseline = np.polyval(coeffs, velos)
-        return intensities - baseline
+        # Subtract baseline
+        def subtract_baseline(velos, intensities, edge_fraction=0.1):
+            n = len(velos)
+            edge_n = int(n * edge_fraction)
+            edge_velos = np.concatenate((velos[:edge_n], velos[-edge_n:]))
+            edge_intensities = np.concatenate((intensities[:edge_n], intensities[-edge_n:]))
+            coeffs = np.polyfit(edge_velos, edge_intensities, 1)
+            baseline = np.polyval(coeffs, velos)
+            return intensities - baseline
 
-    Tmb1_corrected = subtract_baseline(velos1, Tmb1)
-    Tmb2_corrected = subtract_baseline(velos2, Tmb2)
-
-    plt.figure(figsize=(12, 6))
-    plt.subplot(2, 1, 1)
-    plt.plot(velos1, Tmb1_corrected, label='NH3 (1,1) Corrected', color='blue')
-    plt.title('NH3 (1,1) Spectrum after Baseline Subtraction')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.subplot(2, 1, 2)
-    plt.plot(velos2, Tmb2_corrected, label='NH3 (2,2) Corrected', color='red')
-    plt.title('NH3 (2,2) Spectrum after Baseline Subtraction')
-    plt.xlabel('Velocity (km/s)')
-    plt.ylabel('Tmb (K)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_corrected.png'))
-    plt.close()
-
-    # ---------------------------
-    # NH3 (1,1) and (2,2) analysis
-    # ---------------------------
-    h  = 6.62607015e-34
-    k  = 1.380649e-23
-    c  = 2.99792458e8
-    T_BG  = 2.73
-    NU_11 = 23.6944955e9
-    NU_22 = 23.7226333e9
-    DELTA_E_K = 42.32
-
-    def gaussian(v, amp, cen, sig):
-        return amp * np.exp(-0.5 * ((v - cen)/sig)**2)
-
-    def multi_gaussian(v,*pars):
-        n = len(pars)//3
-        out = np.zeros_like(v)
-        for i in range(n):
-            a, c, s = pars[3*i :3*i+3]
-            out += gaussian(v, a, c, s)
-        return out
-
-    def fit_five_gaussians(v, tmb, number, p0=None):
-        if p0 is None:
-            idx_max = np.argmax(tmb)
-            vpk, amp_pk = v[idx_max], tmb[idx_max]
-            width = (v[-1] - v[0]) / 40
-            if number == 'one':
-                centres = np.linspace((v[0] + v[-1])/2 - 10*width, (v[0] + v[-1])/2 + 10*width, 5)
-            else:
-                centres = np.linspace((v[0] + v[-1])/2 - 15*width, (v[0] + v[-1])/2 + 15*width, 5)
-            p0 = []
-            for c_ in centres:
-                p0 += [max(amp_pk/3, 1e-3), c_, width]
-            lower_bounds = []
-            for i in range(15):
-                if i % 3 == 0:
-                    lower_bounds.append(0.0001)
-                elif i % 3 == 2:
-                    lower_bounds.append(1e-6)
-                else:
-                    lower_bounds.append(-np.inf)
-            upper_bounds = [np.inf] * 15
-        pars, _ = curve_fit(lambda vv, *pp: multi_gaussian(vv, *pp),
-                            v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=200000)
-        return pars
-
-    # def comp_areas(pars):
-    #     amps  = pars[0::3]
-    #     sigs  = pars[2::3]
-    #     return amps * sigs * np.sqrt(2*np.pi)
-
-    # def J_nu(T, nu):
-    #     return (h*nu/k) / (np.exp(h*nu/(k*T)) - 1)
-
-    # def tau_from_sat(Ts, Tm, a_s=0.22):
-    #     f = lambda tau: (1 - np.exp(-a_s*tau))/(1 - np.exp(-tau)) - Ts/Tm
-    #     return brentq(f, 1e-4, 100)
-
-    # def tex_from_tau(Tmb_peak, tau, nu):
-    #     Jbg = J_nu(T_BG, nu)
-    #     f = lambda Tex: (J_nu(Tex, nu) - Jbg)*(1 - np.exp(-tau)) - Tmb_peak
-    #     return brentq(f, 1e-4, 100)
-
-    # def T_rot(int11, int22):
-    #     ratio = (int11/int22) * (9/5)
-    #     return DELTA_E_K / np.log(ratio)
-
-    def analyse_pair(v11, t11, v22, t22,
-                     main_idx11=2, sat_idx11=4, a_s=0.03):
-        p11 = fit_five_gaussians(v11, t11, 'one')
-        p22 = fit_five_gaussians(v22, t22, 'two')
-
-        amps11  = p11[0::3]
-        amps22  = p22[0::3]
+        Tmb1_corrected = subtract_baseline(velos1, Tmb1)
+        Tmb2_corrected = subtract_baseline(velos2, Tmb2)
 
         plt.figure(figsize=(12, 6))
         plt.subplot(2, 1, 1)
-        plt.plot(v11, t11, label='NH3 (1,1) Data', color='blue')
-        plt.plot(v11, multi_gaussian(v11, *p11), label='Fit (1,1)', color='orange')
+        plt.plot(velos1, Tmb1_corrected, label='NH3 (1,1) Corrected', color='blue')
+        plt.title('NH3 (1,1) Spectrum after Baseline Subtraction')
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Tmb (K)')
+        plt.legend()
         plt.subplot(2, 1, 2)
-        plt.plot(v22, t22, label='NH3 (2,2) Data', color='red')
-        plt.plot(v22, multi_gaussian(v22, *p22), label='Fit (2,2)', color='green')
-        # plt.annotate(f'tau_11 = {tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s):.2f}')
-        plt.annotate(f'N_NH3 = {escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.2e} m^-2', xy=(0, -5), xycoords='axes points')
+        plt.plot(velos2, Tmb2_corrected, label='NH3 (2,2) Corrected', color='red')
+        plt.title('NH3 (2,2) Spectrum after Baseline Subtraction')
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Tmb (K)')
+        plt.legend()
         plt.tight_layout()
-        # plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png')
-        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png'))
+        plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_corrected.png'))
         plt.close()
 
-        # I11 = np.sum(comp_areas(p11))
-        # I22 = np.sum(comp_areas(p22))
-        # tau_11 = tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s)
-        # Tex_11 = tex_from_tau(amps11[main_idx11], tau_11, NU_11)
-        # Trot = T_rot(I11, I22)
-        # Tkin = Trot /(1-(Trot/42)*np.log(1+1.1*np.exp(-16/Trot)))
-        # return dict(I11=I11, I22=I22, tau_11=tau_11, Tex_11=Tex_11,
-        #             Trot=Trot, Tkin=Tkin, fit_params_11=p11, fit_params_22=p22)
-        return dict(fit_params_11=p11, fit_params_22=p22)
+        # ---------------------------
+        # NH3 (1,1) and (2,2) analysis
+        # ---------------------------
+        h  = 6.62607015e-34
+        k  = 1.380649e-23
+        c  = 2.99792458e8
+        T_BG  = 2.73
+        NU_11 = 23.6944955e9
+        NU_22 = 23.7226333e9
+        DELTA_E_K = 42.32
 
-    res = analyse_pair(velos1, Tmb1_corrected, velos2, Tmb2_corrected)
+        def gaussian(v, amp, cen, sig):
+            return amp * np.exp(-0.5 * ((v - cen)/sig)**2)
 
-    amps11 = res['fit_params_11'][0:15:3]
-    print("NH3 (1,1) hyperfine amplitudes:", amps11)
-    results_file = f'{odir}/results/NLTE_nh3_results_stutzki.csv'
-    os.makedirs(os.path.dirname(results_file), exist_ok=True)
-    header = (
-        "XNH3,numberdensity,vturb,T_cloud,"
-        "A_10,A_21,A_MAIN,A_12,A_01,"
-        "R_01_MAIN,R_10_MAIN,R_21_MAIN,R_12_MAIN,"
-        "N_NH3\n"
-    )
+        def multi_gaussian(v,*pars):
+            n = len(pars)//3
+            out = np.zeros_like(v)
+            for i in range(n):
+                a, c, s = pars[3*i :3*i+3]
+                out += gaussian(v, a, c, s)
+            return out
 
-    if not os.path.exists(results_file) or os.stat(results_file).st_size == 0:
-        with open(results_file, 'w') as f:
-            f.write(header)
+        def fit_five_gaussians(v, tmb, number, p0=None):
+            if p0 is None:
+                idx_max = np.argmax(tmb)
+                vpk, amp_pk = v[idx_max], tmb[idx_max]
+                width = (v[-1] - v[0]) / 40
+                if number == 'one':
+                    centres = np.linspace((v[0] + v[-1])/2 - 10*width, (v[0] + v[-1])/2 + 10*width, 5)
+                else:
+                    centres = np.linspace((v[0] + v[-1])/2 - 15*width, (v[0] + v[-1])/2 + 15*width, 5)
+                p0 = []
+                for c_ in centres:
+                    p0 += [max(amp_pk/3, 1e-3), c_, width]
+                lower_bounds = []
+                for i in range(15):
+                    if i % 3 == 0:
+                        lower_bounds.append(0.0001)
+                    elif i % 3 == 2:
+                        lower_bounds.append(1e-6)
+                    else:
+                        lower_bounds.append(-np.inf)
+                upper_bounds = [np.inf] * 15
+            pars, _ = curve_fit(lambda vv, *pp: multi_gaussian(vv, *pp),
+                                v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=200000)
+            return pars
 
-    with open(results_file, 'a') as f:
-        f.write(
-            f"{XNH3},{numberdensity},{vturb},{T_cloud},"
-            f"{amps11[0]:.3f},{amps11[1]:.3f},{amps11[2]:.3f},{amps11[3]:.3f},{amps11[4]:.3f},"
-            f"{amps11[4]/amps11[2]:.3f},{amps11[0]/amps11[2]:.3f},{amps11[1]/amps11[2]:.3f},{amps11[3]/amps11[2]:.3f},"
-            f"{escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.3e}\n"
+        # def comp_areas(pars):
+        #     amps  = pars[0::3]
+        #     sigs  = pars[2::3]
+        #     return amps * sigs * np.sqrt(2*np.pi)
+
+        # def J_nu(T, nu):
+        #     return (h*nu/k) / (np.exp(h*nu/(k*T)) - 1)
+
+        # def tau_from_sat(Ts, Tm, a_s=0.22):
+        #     f = lambda tau: (1 - np.exp(-a_s*tau))/(1 - np.exp(-tau)) - Ts/Tm
+        #     return brentq(f, 1e-4, 100)
+
+        # def tex_from_tau(Tmb_peak, tau, nu):
+        #     Jbg = J_nu(T_BG, nu)
+        #     f = lambda Tex: (J_nu(Tex, nu) - Jbg)*(1 - np.exp(-tau)) - Tmb_peak
+        #     return brentq(f, 1e-4, 100)
+
+        # def T_rot(int11, int22):
+        #     ratio = (int11/int22) * (9/5)
+        #     return DELTA_E_K / np.log(ratio)
+
+        def analyse_pair(v11, t11, v22, t22,
+                        main_idx11=2, sat_idx11=4, a_s=0.03):
+            p11 = fit_five_gaussians(v11, t11, 'one')
+            p22 = fit_five_gaussians(v22, t22, 'two')
+
+            amps11  = p11[0::3]
+            amps22  = p22[0::3]
+
+            plt.figure(figsize=(12, 6))
+            plt.subplot(2, 1, 1)
+            plt.plot(v11, t11, label='NH3 (1,1) Data', color='blue')
+            plt.plot(v11, multi_gaussian(v11, *p11), label='Fit (1,1)', color='orange')
+            plt.subplot(2, 1, 2)
+            plt.plot(v22, t22, label='NH3 (2,2) Data', color='red')
+            plt.plot(v22, multi_gaussian(v22, *p22), label='Fit (2,2)', color='green')
+            # plt.annotate(f'tau_11 = {tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s):.2f}')
+            plt.annotate(f'N_NH3 = {escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.2e} m^-2', xy=(0, -5), xycoords='axes points')
+            plt.tight_layout()
+            # plt.savefig(f'{odir}/images/NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png')
+            plt.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png'))
+            plt.close()
+
+            # I11 = np.sum(comp_areas(p11))
+            # I22 = np.sum(comp_areas(p22))
+            # tau_11 = tau_from_sat(amps11[sat_idx11], amps11[main_idx11], a_s)
+            # Tex_11 = tex_from_tau(amps11[main_idx11], tau_11, NU_11)
+            # Trot = T_rot(I11, I22)
+            # Tkin = Trot /(1-(Trot/42)*np.log(1+1.1*np.exp(-16/Trot)))
+            # return dict(I11=I11, I22=I22, tau_11=tau_11, Tex_11=Tex_11,
+            #             Trot=Trot, Tkin=Tkin, fit_params_11=p11, fit_params_22=p22)
+            return dict(fit_params_11=p11, fit_params_22=p22)
+
+        res = analyse_pair(velos1, Tmb1_corrected, velos2, Tmb2_corrected)
+
+        amps11 = res['fit_params_11'][0:15:3]
+        print("NH3 (1,1) hyperfine amplitudes:", amps11)
+        results_file = f'{odir}/results/NLTE_nh3_v4.csv'
+        os.makedirs(os.path.dirname(results_file), exist_ok=True)
+        header = (
+            "XNH3,numberdensity,vturb,T_cloud,"
+            "A_10,A_21,A_MAIN,A_12,A_01,"
+            "R_01_MAIN,R_10_MAIN,R_21_MAIN,R_12_MAIN,"
+            "N_NH3, max_NLTE\n"
         )
-    print(f"Results written to {results_file}")
+
+        if not os.path.exists(results_file) or os.stat(results_file).st_size == 0:
+            with open(results_file, 'w') as f:
+                f.write(header)
+
+        with open(results_file, 'a') as f:
+            f.write(
+                f"{XNH3},{numberdensity},{vturb},{T_cloud},"
+                f"{amps11[0]:.3f},{amps11[1]:.3f},{amps11[2]:.3f},{amps11[3]:.3f},{amps11[4]:.3f},"
+                f"{amps11[4]/amps11[2]:.3f},{amps11[0]/amps11[2]:.3f},{amps11[1]/amps11[2]:.3f},{amps11[3]/amps11[2]:.3f},"
+                f"{escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3):.3e},{max_NLTE}\n"
+            )
+        print(f"Results written to {results_file}")
+
+        # ---------------- ORIGINAL CODE ENDS ----------------
+
+    except Exception as e:
+        print("\n!!! ERROR during spectral analysis !!!")
+        print("Type:", type(e).__name__)
+        print("Message:", e)
+        import traceback
+        traceback.print_exc()
+        print("Analysis aborted before CSV writing.")
+        return
+
+    # -------------------------------------------------
+    # Additional Safety Checks AFTER analysis
+    # -------------------------------------------------
+    try:
+        if 'res' not in locals():
+            raise RuntimeError("Result dictionary 'res' not created.")
+
+        if 'fit_params_11' not in res:
+            raise RuntimeError("fit_params_11 missing from results.")
+
+        amps11 = res['fit_params_11'][0:15:3]
+
+        if len(amps11) != 5:
+            raise RuntimeError("Expected 5 hyperfine amplitudes.")
+
+        if np.isclose(amps11[2], 0):
+            print("WARNING: Main hyperfine component amplitude is zero.")
+            print("Ratios may be invalid.")
+
+    except Exception as e:
+        print("Post-analysis validation failed:", e)
+        return
+
+    # -------------------------------------------------
+    # CSV write verification
+    # -------------------------------------------------
+    try:
+        print("Verifying CSV file location...")
+        print("Absolute path:", os.path.abspath(results_file))
+
+        if not os.path.exists(results_file):
+            print("WARNING: CSV file does not exist after write attempt.")
+        else:
+            print("CSV file size:", os.path.getsize(results_file), "bytes")
+
+    except Exception as e:
+        print("CSV verification failed:", e)
+
+    print("--- Spectral analysis complete ---\n")
