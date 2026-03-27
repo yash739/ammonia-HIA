@@ -187,7 +187,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.parameters.set_model_name(model_file)
     model.parameters.set_dimension(3)
     model.parameters.set_npoints(npoints)
-    model.parameters.set_nrays(12 * 2 * 2)
+    model.parameters.set_nrays(12 * 1 * 1)
     model.parameters.set_nspecs(3)
     model.parameters.set_nlspecs(1)
     model.parameters.set_nquads(20)
@@ -337,4 +337,4 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
 if __name__ == "__main__":
     # Provides dummy paths so it can still run standalone if needed
-    run_model(wdir="./", odir="./")
+    run_model(wdir="./", odir="./", XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16)
