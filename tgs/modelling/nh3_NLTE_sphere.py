@@ -272,8 +272,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     # --- 1. Find main hyperfine frequency index (global max τ) ---
     f_main = np.argmax(np.max(tau, axis=0))
-    print("Main hyperfine frequency:", freqs[f_main])
-
+    
     # --- 2. Extract τ at main hyperfine ---
     tau_main_flat = tau[:, f_main]
 
