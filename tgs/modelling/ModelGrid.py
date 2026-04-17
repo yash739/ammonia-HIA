@@ -47,7 +47,7 @@ def worker_task(params):
             max_NLTE=params['max_NLTE'],
             save_plots=False 
         )
-        
+        print(f"Completed analysis for XNH3={params['XNH3']}, n={params['numberdensity']:.2e}, radius={params['radius_req']:.2e}")
         # -----------------------------
         # Step 3: Package Payload
         # -----------------------------
@@ -59,6 +59,7 @@ def worker_task(params):
         }
 
     except Exception as e:
+        print(str(e))
         return {
             "status": "FAILED",
             "params": params,
@@ -71,25 +72,25 @@ def run_model_grid():
     Safely writes ALL results to a single CSV file.
     """
     wdir = "/home/yasho379/magritte_rebuilt/tgs/"
-    odir = "/home/yasho379/magritte_rebuilt/output_test_1e-6_parallel_12rays/"
-    results_csv = os.path.join(odir, "results", "NLTE_nh3_1e-6_parallel_12rays.csv")
+    odir = "/home/yasho379/magritte_rebuilt/output_test_1e-6_parallel_12rays_v2/"
+    results_csv = os.path.join(odir, "results", "NLTE_nh3_1e-6_parallel_12rays_v2.csv")
     
     os.makedirs(os.path.join(odir, "fits"), exist_ok=True)
     os.makedirs(os.path.join(odir, "images"), exist_ok=True)
     os.makedirs(os.path.join(odir, "results"), exist_ok=True)
 
-    max_NLTE = 200 
+    max_NLTE = 300 
 
-    T_cloud_values = [36, 18]       
-    vturb_values = [100, 300]            
+    T_cloud_values = [36,18]       
+    vturb_values = [100,300]            
     XNH3_values = [1e-8]            
 
-    log_n_start, log_n_end = 3.5, 8.5
-    n_steps = 50
+    log_n_start, log_n_end = 3.5, 6.5
+    n_steps = 30
     numberdensity_values = np.logspace(log_n_start, log_n_end, n_steps)
 
     log_N_dv_start, log_N_dv_end = 14.0, 17.0
-    y_steps = 50
+    y_steps = 30
     target_log_N_dv_values = np.linspace(log_N_dv_start, log_N_dv_end, y_steps)
 
     tasks = []
@@ -124,9 +125,14 @@ def run_model_grid():
         'N_NH3','Main Hyperfine Optical Depth', 'Halting Iteration','Final Convergence','Error_Msg'
     ]
     
-    with open(results_csv, mode='w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(master_header)
+    # Only create the file and write the header if it doesn't already exist
+    if not os.path.exists(results_csv):
+        with open(results_csv, mode='w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(master_header)
+        print(f"Created new results file: {results_csv}")
+    else:
+        print(f"Found existing results file. Appending new runs to {results_csv}")
 
     print(f"\nStarting Grid of {len(tasks)} runs.")
     print("Executing with 4 concurrent workers...\n")
@@ -152,7 +158,7 @@ def run_model_grid():
                         "SUCCESS", p['T_cloud'], p['vturb'], p['XNH3'], p['numberdensity'], p['radius_req'], 
                         f"{a['A_10']:.3f}", f"{a['A_21']:.3f}", f"{a['A_MAIN']:.3f}", f"{a['A_12']:.3f}", f"{a['A_01']:.3f}",
                         f"{a['R_01_MAIN']:.3f}", f"{a['R_10_MAIN']:.3f}", f"{a['R_21_MAIN']:.3f}", f"{a['R_12_MAIN']:.3f}",
-                        f"{a['N_NH3']:.3e}",str(result['convergence'][3]),str(result['convergence'][1]), str(result['convergence'][2]), ""
+                        f"{a['N_NH3']:.3e}",str(result['convergence'][2]),str(result['convergence'][0]), str(result['convergence'][1]), ""
                     ])
                 else:
                     # Write failed row, padding missing analysis columns with NaNs
