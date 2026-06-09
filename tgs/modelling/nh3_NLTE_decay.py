@@ -24,29 +24,29 @@ from scipy.spatial import Delaunay
 # -----------------------------
 # Vectorized Physics Functions
 # -----------------------------
-def get_properties_vectorized(positions, rho_center, r_core, decay_index, XNH3, T_cloud, vturb):
-    """Calculates cell properties using a core plateau + power-law envelope."""
+def get_properties_vectorized(positions, n0, r0_n, alpha_n, X0, alpha_X, T_out, T_in, r0_T, vturb):
+    """Calculates cell properties using the Crapsi et al. (2007) profiles."""
     m_H2 = 2.01588 * constants.u.si.value
-    background_density = 1e2 * 1e6 * m_H2
-
-    # Radii of all points
+    background_density_cm3 = 1e2
+    
+    # Radii of all points in meters
     r = np.linalg.norm(positions, axis=1)
     
-    # 1. Inside the core: r_eff = r_core
-    # 2. Outside the core: r_eff = r
-    r_eff = np.maximum(r, r_core)
+    # 1. Density Profile (cm^-3)
+    nH2_cm3 = n0 / (1.0 + (r / r0_n)**alpha_n)
+    nH2_cm3 = np.maximum(nH2_cm3, background_density_cm3)
     
-    # Calculate density: constant inside core, decaying outside
-    gas_density = rho_center * (r_eff / r_core)**(-decay_index)
+    gas_density = nH2_cm3 * 1e6 * m_H2
+    nH2 = gas_density / m_H2  # m^-3
 
-    # Floor the density at the ambient background
-    gas_density = np.maximum(gas_density, background_density)
+    # 2. Abundance Profile & NH3 Number Density
+    X_NH3 = X0 * (nH2_cm3 / n0)**alpha_X
+    nNH3 = X_NH3 * nH2  # m^-3
 
-    nH2 = gas_density / m_H2
-    nNH3 = XNH3 * nH2
+    # 3. Temperature Profile (K)
+    tmp = T_out - (T_out - T_in) / (1.0 + (r / r0_T)**1.5)
 
-    # Temperature and Turbulence (constant arrays)
-    tmp = np.full(len(positions), T_cloud, dtype=np.float64)
+    # Turbulence (constant array)
     trb = np.full(len(positions), (vturb / constants.c.si.value) ** 2, dtype=np.float64)
 
     # Velocity (Static)
@@ -55,7 +55,6 @@ def get_properties_vectorized(positions, rho_center, r_core, decay_index, XNH3, 
     return nH2, nNH3, tmp, trb, velocity
 
 def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, default_bpa_deg, overwrite=True):
-    # [Keep existing add_carta_beams_to_fits function exactly as it was]
     with fits.open(input_fits, mode="readonly") as hdul:
         img_hdu = next((h for h in hdul if (isinstance(h, fits.PrimaryHDU) or isinstance(h, fits.ImageHDU)) 
                         and h.data is not None and h.header.get("NAXIS", 0) >= 2), None)
@@ -93,25 +92,30 @@ def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, defa
         os.remove(input_fits)
 
 
-def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, decay_index=1.5, r_core_au=5000):
+def run_model(wdir, odir, vturb=100, max_NLTE=20, 
+              n0=2.1e6, r0_n_arcsec=14.0, alpha_n=2.5,
+              X0=8e-9, alpha_X=0.16,
+              T_out=12.0, T_in=5.5, r0_T_arcsec=18.0,
+              distance_pc=140.0):
     
-    # Updated all file naming to use decay_index instead of radius
-    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.hdf5')
+    model_file = os.path.join(wdir, f'model_files/NLTE_crapsi_sphere_nh3_{n0:.2e}_{alpha_n:.2f}_{vturb}.hdf5')
     lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt')
 
     m_H2 = 2.01588 * constants.u.si.value
-    rho_center = numberdensity * 1.0E6 * m_H2   
-    background_density = 1e2 * 1e6 * m_H2
-    r_core = r_core_au * constants.au.si.value
-
-    # Calculate outer boundary (r_out) where density = 3 * background
-    target_density = 3.0 * background_density
+    background_density_cm3 = 1e2
     
-    if rho_center > target_density and decay_index > 0:
-        r_out = r_core * (rho_center / target_density)**(1.0 / decay_index)
+    # Angular to physical scale conversions (meters)
+    # At distance_pc, 1 arcsec = distance_pc * AU
+    r0_n = r0_n_arcsec * distance_pc * constants.au.si.value
+    r0_T = r0_T_arcsec * distance_pc * constants.au.si.value
+
+    # Calculate outer boundary (r_out) where density = 3 * background floor
+    target_density_cm3 = 3.0 * background_density_cm3
+    
+    if n0 > target_density_cm3 and alpha_n > 0:
+        r_out = r0_n * (n0 / target_density_cm3 - 1.0)**(1.0 / alpha_n)
     else:
-        # Fallback to prevent meshing errors if central density is very low
-        r_out = r_core * 1.5 
+        r_out = r0_n * 1.5 
         
     resolution = 10
 
@@ -122,11 +126,11 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     position = np.column_stack((Xs.ravel(), Ys.ravel(), Zs.ravel()))
 
-    # Rough density map for remesher
+    # Exact density map matching the analytic profile for the remesher
     r_dist = np.linalg.norm(position, axis=1)
-    r_eff_rough = np.maximum(r_dist, r_core)
-    rhos_ravel = rho_center * (r_eff_rough / r_core)**(-decay_index)
-    rhos_ravel = np.maximum(rhos_ravel, background_density)
+    nH2_rough = n0 / (1.0 + (r_dist / r0_n)**alpha_n)
+    nH2_rough = np.maximum(nH2_rough, background_density_cm3)
+    rhos_ravel = nH2_rough * 1e6 * m_H2
 
     positions_reduced, nb_boundary = mesher.remesh_point_cloud(
         position, rhos_ravel, max_depth=5, threshold=2e-1, hullorder=3
@@ -147,9 +151,9 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     nbs = [n for sublist in neighbors for n in sublist]
     n_nbs = [len(sublist) for sublist in neighbors]
 
-    # Get vectorized physical properties
+    # Get vectorized physical properties under the Crapsi profile
     nH2, nNH3, tmp, trb, velocity = get_properties_vectorized(
-        positions_reduced, rho_center, r_core, decay_index, XNH3, T_cloud, vturb
+        positions_reduced, n0, r0_n, alpha_n, X0, alpha_X, T_out, T_in, r0_T, vturb
     )
     zeros = np.zeros(npoints)
 
@@ -201,7 +205,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     if write_success and os.path.exists(model_file):
         try:
             with h5py.File(model_file, 'r') as f:
-                pass # Check valid read
+                pass 
         except Exception as e:
             raise RuntimeError(f"CRITICAL ERROR: File is corrupt! {e}")
     else:
@@ -223,7 +227,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.compute_spectral_discretisation(fcen_1 - 3000000.00, fcen_1 + 3000000.00, 500)
     model.compute_image_new(0, 16, 16)
 
-    img1_fits = os.path.join(odir, f'fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits')
+    img1_fits = os.path.join(odir, f'fits/NLTE_nh3_image_11_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits')
     tools.save_fits(model, filename=img1_fits)
 
     velos1 = (np.array(model.images[-1].freqs) - fcen_1) / fcen_1 * 3e8 / 1000
@@ -232,13 +236,13 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     fig, ax = plt.subplots()
     ax.plot(velos1, Is1)
-    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_11_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.png'))
+    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_11_{n0:.2e}_{alpha_n:.2f}_{vturb}.png'))
     plt.close(fig)
 
     hdu1 = fits.PrimaryHDU(Is1)
     hdu1.header.update({'CRVAL1': velos1[0], 'CDELT1': velos1[1] - velos1[0], 'CTYPE1': 'VELO-LSR', 
                         'CUNIT1': 'km/s', 'NAXIS1': len(velos1), 'RESTFREQ': fcen_1, 'CRPIX1': 1})
-    hdu1.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits'), overwrite=True)
+    hdu1.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits'), overwrite=True)
 
     # -----------------------------
     # 2nd Line Processing
@@ -247,7 +251,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.compute_spectral_discretisation(fcen_2 - 3000000.00, fcen_2 + 3000000.00, 500)
     model.compute_image_new(0, 16, 16)
 
-    img2_fits = os.path.join(odir, f'fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits')
+    img2_fits = os.path.join(odir, f'fits/NLTE_nh3_image_22_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits')
     tools.save_fits(model, filename=img2_fits)
 
     velos2 = (np.array(model.images[-1].freqs) - fcen_2) / fcen_2 * 3e8 / 1000
@@ -256,13 +260,13 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     fig, ax = plt.subplots()
     ax.plot(velos2, Is2)
-    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_22_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.png'))
+    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_22_{n0:.2e}_{alpha_n:.2f}_{vturb}.png'))
     plt.close(fig)
 
     hdu2 = fits.PrimaryHDU(Is2)
     hdu2.header.update({'CRVAL1': velos2[0], 'CDELT1': velos2[1] - velos2[0], 'CTYPE1': 'VELO-LSR', 
                         'CUNIT1': 'km/s', 'NAXIS1': len(velos2), 'RESTFREQ': fcen_2, 'CRPIX1': 1})
-    hdu2.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits'), overwrite=True)
+    hdu2.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits'), overwrite=True)
 
     model.compute_image_optical_depth_new(0, 16, 16)
 
@@ -286,5 +290,19 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     return info + (tau_main,)
 
 if __name__ == "__main__":
-    run_model(wdir="./", odir="./", XNH3=1e-10, numberdensity=1e6, vturb=300, T_cloud=35, max_NLTE=100, decay_index=1.5, r_core_au=5000)
-    
+    # Runs the model directly using L1544 best-fit parameters from Crapsi et al. (2007)
+    run_model(
+        wdir="./", 
+        odir="./", 
+        vturb=300, 
+        max_NLTE=100,
+        n0=2.1e6, 
+        r0_n_arcsec=14.0, 
+        alpha_n=2.5,
+        X0=8e-9, 
+        alpha_X=0.16,
+        T_out=12.0, 
+        T_in=5.5, 
+        r0_T_arcsec=18.0,
+        distance_pc=140.0
+    )

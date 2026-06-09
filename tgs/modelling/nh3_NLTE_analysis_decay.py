@@ -63,22 +63,26 @@ def fit_five_gaussians(v, tmb, number):
             
     upper_bounds = [np.inf] * 15
     
-    # Dropped maxfev to 50000. If it hasn't converged by then, it's spinning its wheels.
     pars, _ = curve_fit(multi_gaussian, v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=50000)
     return pars
 
 # -----------------------------
 # Main Analysis Function
 # -----------------------------
-def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, decay_index, max_NLTE=100, save_plots=False):
+def analyse_spectra(odir, vturb=100, max_NLTE=20, 
+                    n0=2.1e6, r0_n_arcsec=14.0, alpha_n=2.5,
+                    X0=8e-9, alpha_X=0.16,
+                    T_out=12.0, T_in=5.5, r0_T_arcsec=18.0,
+                    distance_pc=140.0, save_plots=False):
     """
     Analyse the NH3 (1,1) and (2,2) spectra produced by Magritte NLTE model.
     Returns a dictionary of extracted parameters to be written safely by the main thread.
     """
     try:
+        # String matching format exactly mapped to the updated Crapsi profile outputs
         filenames = {
-            'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits'),
-            'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}.fits')
+            'oneone': os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits'),
+            'twotwo': os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{n0:.2e}_{alpha_n:.2f}_{vturb}.fits')
         }
 
         # Open FITS files ONCE to get both data and headers
@@ -103,10 +107,10 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, decay_index, max_
         p22 = fit_five_gaussians(velos2, Tmb2_corrected, 'two')
 
         # -----------------------------
-        # Conditional Plotting (For massive speedups)
+        # Conditional Plotting
         # -----------------------------
         if save_plots:
-            subfolder = f"X{XNH3}_n{numberdensity:.2e}_{decay_index:.2f}_v{vturb}_T{T_cloud}"
+            subfolder = f"X{X0:.2e}_n{n0:.2e}_{alpha_n:.2f}_v{vturb}_T{T_out:.1f}"
             image_subdir = os.path.join(odir, "images", subfolder)
             os.makedirs(image_subdir, exist_ok=True)
 
@@ -122,8 +126,8 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, decay_index, max_
             ax2.legend()
 
             plt.tight_layout()
-            fig.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{decay_index:.2f}_{vturb}_{T_cloud}_fit.png'))
-            plt.close(fig) # Critical to prevent memory leaks
+            fig.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{n0:.2e}_{alpha_n:.2f}_{vturb}_fit.png'))
+            plt.close(fig)
 
         # Extract Amplitudes
         amps11 = p11[0:15:3]
@@ -132,14 +136,14 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, decay_index, max_
         if len(amps11) != 5:
             raise RuntimeError("Expected 5 hyperfine amplitudes.")
         if np.isclose(amps11[2], 0):
-            print(f"WARNING: Main HF component amplitude is zero for T={T_cloud}, n={numberdensity:.2e}. Ratios may be invalid.")
+            print(f"WARNING: Main HF component amplitude is zero for T_out={T_out}, n0={n0:.2e}. Ratios may be invalid.")
 
         # Delete the FITS files after analysis is complete
         for filename in filenames.values():
             if os.path.exists(filename):
                 os.remove(filename)
                 
-        # Return the payload dictionary to the main thread delivery system
+        # Return payload dictionary
         return {
             'A_10': amps11[0], 'A_21': amps11[1], 'A_MAIN': amps11[2], 'A_12': amps11[3], 'A_01': amps11[4],
             'R_01_MAIN': amps11[4]/amps11[2] if amps11[2] != 0 else np.nan,
@@ -152,17 +156,37 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, decay_index, max_
         raise RuntimeError(f"Spectral analysis failed: {e}")
 
 if __name__ == "__main__":
-    # Example usage for a single set of parameters (for testing)
-    odir = "/home/yasho379/magritte_rebuilt/output_test_decaying/"
+    odir = "./"
     from nh3_NLTE_decay import run_model
-    info =  run_model(
-        wdir="/home/yasho379/magritte_rebuilt/tgs/",
-        odir=odir,
-        XNH3=1e-8,
-        numberdensity=1e6,
-        vturb=100.0,
-        decay_index=1.5,
-        T_cloud=18.0,
-        max_NLTE=20)
-    result = analyse_spectra(odir, XNH3=1e-8, numberdensity=1e6, vturb=100, T_cloud=18.0, decay_index=1.5, save_plots=True)
+    
+    run_model(
+        wdir="./", 
+        odir="./", 
+        vturb=300, 
+        max_NLTE=100,
+        n0=2.1e8, 
+        r0_n_arcsec=14.0, 
+        alpha_n=2.5,
+        X0=8e-9, 
+        alpha_X=0.16,
+        T_out=12.0, 
+        T_in=5.5, 
+        r0_T_arcsec=18.0,
+        distance_pc=140.0
+    )
+    result = analyse_spectra(
+        odir=odir, 
+        vturb=300, 
+        max_NLTE=100,
+        n0=2.1e8, 
+        r0_n_arcsec=14.0, 
+        alpha_n=2.5,
+        X0=8e-9, 
+        alpha_X=0.16,
+        T_out=12.0, 
+        T_in=5.5, 
+        r0_T_arcsec=18.0,
+        distance_pc=140.0,
+        save_plots=True
+    )
     print(result)
