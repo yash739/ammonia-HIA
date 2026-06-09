@@ -152,3 +152,22 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, radius_sphere, ma
 
     except Exception as e:
         raise RuntimeError(f"Spectral analysis failed: {e}")
+
+if __name__ == "__main__":
+    odir = "./"
+    from nh3_NLTE_sphere import run_model
+    run_model(wdir="./", odir="./", XNH3=1e-9, 
+              numberdensity=1e6, vturb=300, T_cloud=35, 
+              max_NLTE=100, radius_sphere=1e16)
+    
+    results = analyse_spectra(
+        odir=odir, 
+        XNH3=1e-9, 
+        numberdensity=1e6, 
+        vturb=300, 
+        T_cloud=35, 
+        radius_sphere=1e16,
+        max_NLTE=100,
+        save_plots=True
+    )
+    print(results)
