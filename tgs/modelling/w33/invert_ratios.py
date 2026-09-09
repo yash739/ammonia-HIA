@@ -37,6 +37,7 @@ import os
 import sys
 import csv
 import multiprocessing
+import time
 import numpy as np
 
 import params as p
@@ -343,21 +344,54 @@ def _invert_worker(task):
         return dict(Status="FAILED", Error_Msg=str(e), **base)
 
 
+# Magritte spins up OpenMP threads. If a caller has already run a model in the
+# parent process, forking a Pool afterwards hands the children mutexes held by
+# threads that do not exist in them, and every worker blocks forever in
+# futex_wait -- observed as 14 workers at 0% CPU with a byte-frozen log. The
+# spawn context does not inherit parent memory or lock state, so it is immune
+# regardless of what the caller did first. Workers re-import, which is
+# negligible against multi-minute models.
+MP_CONTEXT = "spawn"
+
+# A round with no completed task for this multiple of the slowest observed model
+# is treated as hung. Silence must never be indistinguishable from progress.
+WATCHDOG_STALL_FACTOR = 3.0
+WATCHDOG_MIN_GRACE_S = 1800.0
+
+
 def _run_new_tasks(new_tasks, processes, out_csv, header_written):
     results = []
     if not new_tasks:
         return results, header_written
     mode = 'a' if header_written else 'w'
-    with multiprocessing.Pool(processes=processes, maxtasksperchild=1) as pool:
+    ctx = multiprocessing.get_context(MP_CONTEXT)
+    slowest = 0.0
+    last_completion = time.monotonic()
+    with ctx.Pool(processes=processes, maxtasksperchild=1) as pool:
         with open(out_csv, mode, newline='') as f:
             writer = csv.DictWriter(f, fieldnames=INVERT_HEADER)
             if not header_written:
                 writer.writeheader()
                 header_written = True
-            for result in pool.imap_unordered(_invert_worker, new_tasks):
+            it = pool.imap_unordered(_invert_worker, new_tasks)
+            while True:
+                try:
+                    result = next(it)
+                except StopIteration:
+                    break
+                now = time.monotonic()
+                slowest = max(slowest, now - last_completion)
+                last_completion = now
                 writer.writerow({k: result.get(k, "") for k in INVERT_HEADER})
                 f.flush()
                 results.append(result)
+                stall_limit = max(WATCHDOG_MIN_GRACE_S, WATCHDOG_STALL_FACTOR * slowest)
+                if now - last_completion > stall_limit:
+                    raise RuntimeError(
+                        f"watchdog: no task completed in {now - last_completion:.0f}s "
+                        f"(limit {stall_limit:.0f}s). Workers are likely deadlocked; "
+                        f"{len(results)}/{len(new_tasks)} tasks finished."
+                    )
     return results, header_written
 
 

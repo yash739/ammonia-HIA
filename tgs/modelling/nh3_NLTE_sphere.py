@@ -26,19 +26,48 @@ import nh3_hyperfine
 # -----------------------------
 # Vectorized Physics Functions -- CONSTANT AMMONIA ABUNDANCE HAS BEEN ASSUMED FOR SIMPLICITY
 # -----------------------------
-def get_properties_vectorized(positions, rho_cloud, r_out, XNH3, T_cloud, vturb):
-    """Calculates all cell properties using fast, vectorized Numpy operations."""
+# Fraction of the cloud's own H2 density used for the radiatively inert exterior.
+# It exists only to keep the Delaunay mesh well-defined out to the boundary and
+# to give the remesher a density contrast to work with. Because it SCALES with
+# the cloud, that contrast is identical at every grid point -- with a fixed
+# exterior density it varied by four orders of magnitude across the intended
+# (n_H2 = 10^3.5 - 10^7.5) grid, so different grid points were meshed at
+# different effective resolution, which would have shown up in a lookup table's
+# interpolation-error map as physics rather than mesh noise.
+EXTERIOR_DENSITY_FRACTION = 1e-3
+
+
+def get_properties_vectorized(positions, rho_cloud, r_out, XNH3, T_cloud, vturb,
+                                exterior_density_fraction=EXTERIOR_DENSITY_FRACTION):
+    """Calculates all cell properties using fast, vectorized Numpy operations.
+
+    The sphere is BARE: outside r_out the NH3 abundance is zero, so the exterior
+    is radiatively inert and the geometry matches the homogeneous sphere of
+    Stutzki & Winnewisser (1985) Appendix A, whose escape probability beta(r)
+    (their Fig. 3) is derived for a cloud that simply ends at R with isotropic
+    CMB incident. Previously the exterior was given 100 cm^-3 of H2 *and*
+    nNH3 = XNH3 * nH2 *and* T_cloud, i.e. an ammonia envelope at the cloud's own
+    temperature -- radiatively small (its NH3 column is <1% of the cloud's even
+    at the low-density corner) but not the assumed geometry, and it silently
+    fixed envelope parameters we never chose.
+
+    Ambient/envelope emission is not thereby dropped from the physics: it belongs
+    in a post-hoc two-component decomposition (anomalous clump + LTE-like
+    ambient), where its filling factor is fitted and reported rather than baked
+    into every model.
+    """
     m_H2 = 2.01588 * constants.u.si.value
-    background_density = 1e2 * 1e6 * m_H2
 
     # Radii of all points
     r = np.linalg.norm(positions, axis=1)
-    
-    # Densities -- Constant Density Sphere with background outside
-    gas_density = np.where(r > r_out, background_density, rho_cloud)
+
+    outside = r > r_out
+
+    # Constant-density sphere; the exterior carries only mesh-support H2.
+    gas_density = np.where(outside, rho_cloud * exterior_density_fraction, rho_cloud)
 
     nH2 = gas_density / m_H2
-    nNH3 = XNH3 * nH2
+    nNH3 = np.where(outside, 0.0, XNH3 * nH2)
 
     # Temperature and Turbulence (constant arrays)
     tmp = np.full(len(positions), T_cloud, dtype=np.float64)
@@ -175,27 +204,29 @@ def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=1
     return velos, Is
 
 
-def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
-              image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=5, return_cubes=False,
-              save_image_fits=False):
-    """
-    fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
-    sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
-    boundary at r_out, no sky padding -- this is what Magritte's imager then uses
-    as the image field of view (see image.cpp set_coordinates_projection_surface),
-    so an unpadded image is exactly source-diameter-wide with no room for a beam
-    convolution kernel to see real background. Pass e.g. 5.0 to place the boundary
-    (and a coarse background-density fringe) 5x further out, giving a convolution
-    real sky to sample instead of replicating source-edge brightness.
-    """
+def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor=1.0,
+                       exterior_density_fraction=EXTERIOR_DENSITY_FRACTION):
+    """Build the Delaunay point cloud for one sphere.
 
-    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_pad{fov_pad_factor}_res{resolution}.hdf5')
-    lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt')
+    Extracted from run_model so the mesh can be exercised without running the
+    NLTE solve -- the point count must be stable across a density grid for a
+    lookup table's interpolation-error map to mean anything, and that is only
+    checkable if this is callable on its own.
 
-    m_H2 = 2.01588 * constants.u.si.value
-    rho_cloud = numberdensity * 1.0E6 * m_H2
-    r_out = radius_sphere / 100
-    r_boundary = r_out * fov_pad_factor
+    The mesh is constructed in DIMENSIONLESS units (unit radius, unit density)
+    and scaled to physical size afterwards. Only the *shape* of the density field
+    should determine mesh topology, but the remesher also responds to absolute
+    scale: building directly in SI gave 53-78 interior points across a 4-dex
+    density sweep (r_out spanning 1e12-1e16 m), whereas normalising gives a
+    byte-identical cloud at every grid point. That reproducibility is what lets a
+    lookup table's interpolation-error map measure physics instead of mesh noise.
+
+    Returns (positions_reduced, nb_boundary), positions in physical units.
+    """
+    scale = float(r_out)
+    r_boundary = float(r_boundary) / scale
+    rho_cloud = 1.0
+    r_out = 1.0
 
     xs = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
     ys = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
@@ -219,8 +250,10 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     # Rough density map for remesher
     r_dist = np.linalg.norm(position, axis=1)
-    background_density = 1e2 * 1e6 * m_H2
-    rhos_ravel = np.where(r_dist > r_out, background_density, rho_cloud)
+    # Same scaled exterior as get_properties_vectorized, so the density contrast
+    # the remesher sees is identical at every point of a density grid.
+    rhos_ravel = np.where(r_dist > r_out,
+                           rho_cloud * exterior_density_fraction, rho_cloud)
 
     positions_reduced, nb_boundary = mesher.remesh_point_cloud(
         position, rhos_ravel, max_depth=5, threshold=2e-1, hullorder=3
@@ -233,6 +266,36 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_outer_boundary(
         positions_reduced, nb_boundary, r_boundary, healpy_order=3, origin=origin
     )
+    npoints = len(positions_reduced)
+    return positions_reduced * scale, nb_boundary
+
+
+def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
+              image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=10,
+              nrays=48, return_cubes=False,
+              save_image_fits=False):
+    """
+    fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
+    sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
+    boundary at r_out, no sky padding -- this is what Magritte's imager then uses
+    as the image field of view (see image.cpp set_coordinates_projection_surface),
+    so an unpadded image is exactly source-diameter-wide with no room for a beam
+    convolution kernel to see real background. Pass e.g. 5.0 to place the boundary
+    (and a coarse background-density fringe) 5x further out, giving a convolution
+    real sky to sample instead of replicating source-edge brightness.
+    """
+
+    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_pad{fov_pad_factor}_res{resolution}_nr{nrays}.hdf5')
+    lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt')
+
+    m_H2 = 2.01588 * constants.u.si.value
+    rho_cloud = numberdensity * 1.0E6 * m_H2
+    r_out = radius_sphere / 100
+    r_boundary = r_out * fov_pad_factor
+
+    positions_reduced, nb_boundary = build_point_cloud(
+        rho_cloud, r_out, r_boundary, resolution=resolution,
+        fov_pad_factor=fov_pad_factor)
     npoints = len(positions_reduced)
 
     delaunay = Delaunay(positions_reduced)
@@ -251,7 +314,10 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.parameters.set_model_name(model_file)
     model.parameters.set_dimension(3)
     model.parameters.set_npoints(npoints)
-    model.parameters.set_nrays(12 * 1 * 1)
+    # HEALPix nside=2 -> 48 directions. The previous hardcoded 12 (nside=1) is
+    # the coarsest quadrature available, and the level populations are driven by
+    # the mean intensity, an angular integral.
+    model.parameters.set_nrays(nrays)
     model.parameters.set_nspecs(3)
     model.parameters.set_nlspecs(1)
     model.parameters.set_nquads(20)
