@@ -147,6 +147,46 @@ def stutzki_e_tau(tau):
     return out
 
 
+# Magritte's imager field is NOT +/- fov_pad_factor * r_out -- it is smaller,
+# by a factor of exactly 15/16, measured directly via model.images[-1].ImX/ImY
+# (the imager's actual physical pixel-plane coordinates, not inferred from
+# intensity ratios -- an earlier attempt to infer it from a mean-intensity
+# ratio implied a source average 1.04x the central sightline, which is
+# impossible for a uniform sphere, so it was reverted pending this direct
+# measurement). Reproduced identically to 5-6 significant figures at
+# fov_pad_factor = 1.0 (ratio 0.937500) and 1.15 (ratio 0.937500), i.e. a
+# fixed, scale-independent factor. Leading candidate explanation: Magritte's
+# imager sets the field from the projected extent of the finite set of
+# HEALPix points making up the outer boundary shell (healpy_order=3 in
+# build_point_cloud), which -- a discrete point set, not a continuous sphere
+# -- systematically undershoots the true continuous-sphere projected radius.
+# Plausible given the empirical precision, but not derived here from HEALPix
+# geometry from first principles; trust the measured 15/16, not this
+# explanation for it.
+MAGRITTE_IMAGE_HALF_EXTENT_FACTOR = 15.0 / 16.0
+
+
+def _disc_average_from_image_mean(image_mean, disc_radius_frac):
+    """Pure geometry: given the plain mean over a square image and the radius
+    of a uniform disc within it (as a fraction of the image half-width),
+    return the average over the disc alone.
+
+    fill = pi * disc_radius_frac^2 / 4 (area of the unit-square-normalised
+    disc over the area of the unit square, i.e. disc area / full image area
+    for an image spanning +/-1 in each axis), and image_mean = fill *
+    disc_average, since the region outside the disc is radiatively inert
+    (zero intensity) in this pipeline's bare-clump geometry (Phase 0d).
+
+    Deliberately takes no Magritte-specific parameters (no fov_pad_factor) --
+    this is the general disc-in-square-image identity, validated directly
+    against Stutzki's analytic e(tau) in test_imaging_integration.py using
+    synthetic images with a disc radius chosen directly, independent of
+    whatever a real Magritte image's fov_pad_factor happens to imply.
+    """
+    fill = np.pi * float(disc_radius_frac) ** 2 / 4.0
+    return np.asarray(image_mean) / fill
+
+
 def _source_integrated_spectrum(image_I, nx_pix, ny_pix, fov_pad_factor=1.0):
     """Source-averaged intensity -- the observable for a source unresolved by
     the telescope beam, normalised to the SOURCE solid angle, not the image's.
@@ -160,43 +200,23 @@ def _source_integrated_spectrum(image_I, nx_pix, ny_pix, fov_pad_factor=1.0):
     non-linear in tau, the mean of the ratios is not the ratio of the means.
 
     Equal-area pixels, so a plain mean over pixels is the average over the
-    IMAGE. That is not the same thing: the field of view must extend past the
-    limb (fov_pad_factor > 1) or edge pixels clip flux at exactly the low-tau
-    annulus that differs most from the centre -- but padding then puts empty sky
-    in the field, and a plain mean is diluted by the fill fraction, which is an
-    arbitrary consequence of the padding choice rather than a property of the
-    source. Ratios are immune (the factor cancels) but the absolute brightness
-    is not, and the absolute scale is exactly what a filling-factor treatment
-    needs.
+    IMAGE, which is not the source average: the field of view must extend past
+    the limb (fov_pad_factor > 1) or edge pixels clip flux at exactly the
+    low-tau annulus that differs most from the centre, but padding then puts
+    empty sky in the field, and a plain mean is diluted by the resulting fill
+    fraction. Ratios are immune (the factor cancels) but the absolute
+    brightness is not, and the absolute scale is exactly what a
+    filling-factor treatment needs.
 
-    So divide by the source's own solid angle: the image spans
-    +/- fov_pad_factor * r_out, the source disc has radius r_out, hence
-
-        fill = pi * r_out^2 / (2 * fov_pad_factor * r_out)^2
-             = pi / (4 * fov_pad_factor^2)
-
-    and source-average = image-mean / fill. This makes the result independent of
-    the padding choice, which is the property that makes it comparable to
-    Stutzki's Eq. (8), where the source solid angle appears explicitly as
-    Omega_s / Omega_m.
-
-    OPEN ITEM -- the absolute normalisation is NOT yet correct. Dividing by an
-    analytic fill fraction pi/(4 fov_pad_factor^2) was tried and is demonstrably
-    wrong: against a real run at fov_pad_factor=1.15 it implies a source average
-    1.04x the central sightline, which is impossible (the disc average of a
-    uniform sphere can never exceed its centre). The imager's field is evidently
-    not +/- fov_pad_factor * r_out -- note the padding fringe only triggers above
-    fov_pad_factor > 1.2, while the seed cube already spans +/-1.2 r_out -- so
-    the field must be measured rather than assumed.
-
-    Until then this returns the plain mean over the image field, which is
-    therefore diluted by an unknown, fov_pad_factor-dependent fill fraction.
-    RATIOS ARE UNAFFECTED (the factor cancels), so the lookup table's ratio
-    observables are sound; only the absolute brightness scale is pending, and
-    fov_pad_factor is recorded per row so the correction can be applied
-    retrospectively once the field is pinned down.
+    Converts Magritte's fov_pad_factor into the true disc-radius fraction via
+    MAGRITTE_IMAGE_HALF_EXTENT_FACTOR (see its own docstring for how that was
+    measured), then applies the general disc-averaging identity above -- so
+    the Magritte-specific correction and the general geometry are two
+    separate, independently testable pieces.
     """
-    return np.asarray(image_I).mean(axis=0)
+    disc_radius_frac = 1.0 / (MAGRITTE_IMAGE_HALF_EXTENT_FACTOR * float(fov_pad_factor))
+    image_mean = np.asarray(image_I).mean(axis=0)
+    return _disc_average_from_image_mean(image_mean, disc_radius_frac)
 
 
 def _center_beam_spectrum(image_I, nx_pix, ny_pix):
