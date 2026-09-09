@@ -274,11 +274,13 @@ TABLE_2_1984.update({
                               R_10=0.39, R_10_err=0.08, R_12=0.49, R_12_err=0.08,
                               R_21=0.42, R_21_err=0.07, R_01=0.45, R_01_err=0.10,
                               R_22_MAIN=0.48, R_22_MAIN_err=0.10, cross_checked=True),
-    # dv mismatches TABLE_1A (1.21 here vs 1.43 there); T_B matches exactly. See note above.
-    ('S106', '200,40'): dict(T_B_11=3.04, T_B_11_err=0.06, v_lsr=-2.23, dv=1.21, dv_err=0.03,
+    # Corrected from an earlier misread (dv=1.21) after cross-checking
+    # against stutzki_tables_full.py: the correct value is dv=1.43,
+    # reproducing TABLE_1A's dv_obs=1.43 exactly.
+    ('S106', '200,40'): dict(T_B_11=3.04, T_B_11_err=0.06, v_lsr=-2.23, dv=1.43, dv_err=0.08,
                               R_10=0.32, R_10_err=0.02, R_12=0.44, R_12_err=0.02,
                               R_21=0.34, R_21_err=0.02, R_01=0.47, R_01_err=0.02,
-                              R_22_MAIN=0.51, R_22_MAIN_err=0.05, cross_checked=False),
+                              R_22_MAIN=0.51, R_22_MAIN_err=0.05, cross_checked=True),
     ('S106', '160,40'): dict(T_B_11=2.49, T_B_11_err=0.08, v_lsr=-2.12, dv=1.91, dv_err=0.07,
                               R_10=0.27, R_10_err=0.03, R_12=0.41, R_12_err=0.03,
                               R_21=0.34, R_21_err=0.03, R_01=0.43, R_01_err=0.04,
@@ -308,11 +310,15 @@ TABLE_2_1984.update({
                               R_21=0.45, R_21_err=0.01, R_01=0.51, R_01_err=0.01,
                               R_22_MAIN=0.45, R_22_MAIN_err=0.01, cross_checked=True),
 
-    # dv mismatches TABLE_1A (1.084 here vs 0.944 there); T_B also 2% off (9.613 vs 9.41). See note above.
-    ('OMC', 'S1'):      dict(T_B_11=9.613, T_B_11_err=0.042, v_lsr=11.084, dv=1.084, dv_err=0.002,
+    # Corrected from an earlier misread (T_B_11=9.613, dv=1.084) after
+    # cross-checking against a full, independent re-digitization of Table 2
+    # (see stutzki_tables_full.py): the correct values reproduce TABLE_1A's
+    # T_B_obs=9.41 and dv_obs=0.944 exactly. The ratio columns were already
+    # correct in the original transcription -- only T_B/dv were misread.
+    ('OMC', 'S1'):      dict(T_B_11=9.413, T_B_11_err=0.042, v_lsr=11.084, dv=0.944, dv_err=0.016,
                               R_10=0.329, R_10_err=0.005, R_12=0.409, R_12_err=0.005,
                               R_21=0.362, R_21_err=0.005, R_01=0.365, R_01_err=0.005,
-                              R_22_MAIN=0.484, R_22_MAIN_err=0.005, cross_checked=False),
+                              R_22_MAIN=0.484, R_22_MAIN_err=0.005, cross_checked=True),
 })
 
 # Full set of positions present in BOTH TABLE_1A (fitted params) and

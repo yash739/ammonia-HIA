@@ -16,15 +16,22 @@ search bounds:
      independent clump velocities (K >= Delta_v_obs / Delta_v_clump). His own
      low-density branch failed exactly this: K<=1 predicted vs K>=5 required.
 
-CONFIDENCE NOTE: the Jeans-length/mass/M_c(max) coefficients below (0.776e-3,
-0.103, 347.4) and the K formula have now been directly verified against a
-full read of Stutzki & Winnewisser (1985) Sect. 4 (not just the earlier
-paper-image transcription), including reproducing Table 2a's S106 (200,40)
-row numerically: K=56.36 (paper, from log(K)=1.751) vs 56.37 computed here
-from the paper's own T_k/n'/eta_f/Delta_v_obs for that row -- a 3-sig-fig
-match. See clump_count_K's docstring for the derivation of the K formula,
-which the paper prints ambiguously (an OCR/typeset-scan artifact, not our
-error) and which this verification pass resolved.
+CONFIDENCE NOTE: every coefficient below (Jeans length 0.776e-2, Jeans mass
+0.103, M_c(max) 347.4, and the K formula's derivation) is now verified against
+ALL 23 positions of the paper's own Table 2a (derived quantities), not a
+single spot check: max|log10 discrepancy| < 0.0005 dex for log(M_J),
+log(M_c_max) and log(K) across all 23 rows, and < 0.0005 dex for
+log(lambda_J) after fixing a real bug this cross-check found -- an earlier
+transcription of the Jeans-length coefficient as 0.776e-3 (one digit off from
+the paper's printed exponent) was exactly 10x too small at every single
+position. That bug never affected clump_count_K or physically_consistent()
+(the two functions the inversion pipeline actually calls), since neither
+depends on jeans_length_pc -- jeans_mass_Msun and max_clump_mass_Msun use
+their own independent coefficients, which matched to <0.001 dex even before
+the fix. See tgs/modelling/w33/stutzki_tables_full.py, which parses the
+paper's full Table 2a/2b directly from a complete user-provided digitization,
+and clump_count_K's docstring for the K-formula derivation (the paper prints
+it typeset-ambiguously; this cross-check is what resolved that ambiguity).
 
 Units: T_k [K], n_H2 [cm^-3] (already true n_H2 for us -- unlike Stutzki's own
 n', we use Loreau et al. NH3-H2 rates directly, not NH3-He rates scaled by
@@ -49,10 +56,21 @@ def eta_f(T_B_obs, T_B_theor):
 def jeans_length_pc(T_k, n_H2_cm3):
     """lambda_J [pc], Stutzki & Winnewisser (1985) Sect. 4, Eq. (their own
     numbering not preserved here -- see module docstring on coefficient
-    confidence)."""
+    confidence).
+
+    Coefficient corrected from an earlier 0.776e-3 (a one-digit misread of the
+    paper's printed exponent) to 0.776e-2, found and fixed by checking this
+    function against all 23 positions of the paper's own Table 2a
+    (log_lambda_J column, in units of 1e-2 pc): the old coefficient was
+    exactly 10x too small at every single position (ratio 0.09999...==1e-1
+    to 5 sig figs), while jeans_mass_Msun and max_clump_mass_Msun -- which do
+    NOT depend on this function -- matched to <0.001 dex throughout, so this
+    fix does not touch clump_count_K or physically_consistent(), the two
+    functions actually used in the inversion pipeline.
+    """
     T1 = T_k / 10.0
     n7 = n_H2_cm3 / 1e7
-    return 0.776e-3 * np.sqrt(T1 / n7)
+    return 0.776e-2 * np.sqrt(T1 / n7)
 
 
 def jeans_mass_Msun(T_k, n_H2_cm3):

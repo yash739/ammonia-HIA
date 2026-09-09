@@ -94,3 +94,43 @@ def test_physically_consistent_nan_etaf_when_theor_zero():
                                         dv_obs_kms=1.5, dv_clump_kms=0.3, distance_pc=1000)
     assert ok is False
     assert np.isnan(detail['eta_f'])
+
+
+def test_jeans_length_matches_table_2a_all_positions():
+    """Regression test for the 0.776e-3 -> 0.776e-2 coefficient fix, found by
+    checking against all 23 positions of Stutzki & Winnewisser (1985)'s own
+    Table 2a. Skipped if the full-table parser/CSV isn't present."""
+    pytest.importorskip('stutzki_tables_full')
+    import numpy as np
+    import stutzki_tables_full as sf
+    diffs = []
+    for key, e in sf.TABLE_1A_FULL.items():
+        d2a = sf.TABLE_2A_DERIVED.get(key)
+        if d2a is None:
+            continue
+        lj = jeans_length_pc(e['T_k'], 10 ** e['log_nH2']) * 100  # pc -> 1e-2 pc
+        diffs.append(np.log10(lj) - d2a['log_lambda_J_e2pc'])
+    assert len(diffs) == 23
+    assert max(abs(d) for d in diffs) < 0.001
+
+
+def test_clump_count_K_matches_table_2a_all_positions():
+    """Same cross-check for log(K) -- the quantity physically_consistent()
+    actually relies on."""
+    pytest.importorskip('stutzki_tables_full')
+    import numpy as np
+    import stutzki_tables_full as sf
+    DIST_PC = {'S106': 600.0, 'S87': 1300.0, 'W48': 3400.0, 'OMC': 500.0}
+    diffs = []
+    for (region, pos), e in sf.TABLE_1A_FULL.items():
+        d2a = sf.TABLE_2A_DERIVED.get((region, pos))
+        if d2a is None or e['T_B_obs'] is None or e['eta_f'] is None:
+            continue
+        K = clump_count_K(T_k=e['T_k'], n_H2_cm3=10 ** e['log_nH2'],
+                           eta_f_value=e['eta_f'], distance_pc=DIST_PC[region],
+                           dv_obs_kms=e['dv_obs'], dv_clump_kms=0.3)
+        if K <= 0 or np.isnan(K):
+            continue
+        diffs.append(np.log10(K) - d2a['log_K'])
+    assert len(diffs) == 23
+    assert max(abs(d) for d in diffs) < 0.001
