@@ -16,15 +16,15 @@ search bounds:
      independent clump velocities (K >= Delta_v_obs / Delta_v_clump). His own
      low-density branch failed exactly this: K<=1 predicted vs K>=5 required.
 
-CONFIDENCE NOTE: the Jeans-length/mass/M_c(max) numerical coefficients below
-(0.776e-3, 0.103, 347.4) are transcribed from this session's earlier reading
-of Stutzki & Winnewisser (1985) Sect. 4 -- they were read once from the paper
-images and not independently re-derived or cross-checked against a second
-source. Treat the ABSOLUTE clump_count_K value as order-of-magnitude
-trustworthy, not exact -- but the K<=1-vs-K>=5 style rejection this session
-needs is a large (>5x) contrast, robust to a factor-of-few error in these
-coefficients. Re-verify against the paper directly before relying on this for
-anything requiring the coefficients' last-digit precision.
+CONFIDENCE NOTE: the Jeans-length/mass/M_c(max) coefficients below (0.776e-3,
+0.103, 347.4) and the K formula have now been directly verified against a
+full read of Stutzki & Winnewisser (1985) Sect. 4 (not just the earlier
+paper-image transcription), including reproducing Table 2a's S106 (200,40)
+row numerically: K=56.36 (paper, from log(K)=1.751) vs 56.37 computed here
+from the paper's own T_k/n'/eta_f/Delta_v_obs for that row -- a 3-sig-fig
+match. See clump_count_K's docstring for the derivation of the K formula,
+which the paper prints ambiguously (an OCR/typeset-scan artifact, not our
+error) and which this verification pass resolved.
 
 Units: T_k [K], n_H2 [cm^-3] (already true n_H2 for us -- unlike Stutzki's own
 n', we use Loreau et al. NH3-H2 rates directly, not NH3-He rates scaled by
@@ -72,16 +72,33 @@ def max_clump_mass_Msun(n_H2_cm3, eta_f_value, distance_pc):
     return 347.4 * n7 * r_05kpc ** 3 * eta_f_value ** 1.5
 
 
-def clump_count_K(T_k, n_H2_cm3, eta_f_value, distance_pc):
-    """Number of Jeans-mass clumps the beam can physically hold, from
-    (M_c(max)/M_J)^(2/3) -- compare against clump_count_required() to test
-    Stutzki's physical-consistency criterion. NaN if eta_f is unphysical
-    (<=0) since M_c(max) is undefined there."""
+def clump_count_K(T_k, n_H2_cm3, eta_f_value, distance_pc, dv_obs_kms, dv_clump_kms):
+    """Predicted number of clumps per beam, Stutzki & Winnewisser (1985)
+    Sect. 4: setting M_c = M_J (clumps sit at their own Jeans mass) gives an
+    intermediate quantity kappa = (M_c(max)/M_J)^(2/3), and the paper's own
+    tabulated K (Table 2a/2b) is kappa * (Delta_v_obs/Delta_v) -- NOT kappa
+    alone. This is confirmed by direct numerical reproduction of Table 2a's
+    S106 (200,40) row (K=56.36 there vs 56.37 computed here from the row's
+    own T_k/n'/eta_f/Delta_v_obs) -- the paper's printed formula is
+    typeset-ambiguous (a fraction bar lost in OCR/scan) and this check is
+    what resolves it: without the Delta_v_obs/Delta_v factor the same row
+    computes to kappa=11.8, which does not match the paper's tabulated
+    56.4=11.8*(1.43/0.3).
+
+    Physically: kappa alone (>=1, i.e. M_c(max)>=M_J) is the actual
+    consistency criterion -- it asks whether even one Jeans-mass clump fits
+    in the derived mass budget. The Delta_v_obs/Delta_v factor is carried
+    along only so K can be compared directly against
+    clump_count_required(dv_obs_kms, dv_clump_kms) = Delta_v_obs/Delta_v, per
+    the paper's own reporting convention (e.g. "10-100 clumps per beam").
+
+    NaN if eta_f is unphysical (<=0) since M_c(max) is undefined there."""
     M_c_max = max_clump_mass_Msun(n_H2_cm3, eta_f_value, distance_pc)
     M_J = jeans_mass_Msun(T_k, n_H2_cm3)
     if np.isnan(M_c_max) or M_J <= 0:
         return np.nan
-    return (M_c_max / M_J) ** (2.0 / 3.0)
+    kappa = (M_c_max / M_J) ** (2.0 / 3.0)
+    return kappa * (dv_obs_kms / dv_clump_kms)
 
 
 def clump_count_required(dv_obs_kms, dv_clump_kms):
@@ -102,7 +119,7 @@ def physically_consistent(T_k, n_H2_cm3, T_B_obs, T_B_theor, dv_obs_kms, dv_clum
         linewidth).
     """
     ef = eta_f(T_B_obs, T_B_theor)
-    K_pred = clump_count_K(T_k, n_H2_cm3, ef, distance_pc) if ef > 0 else np.nan
+    K_pred = clump_count_K(T_k, n_H2_cm3, ef, distance_pc, dv_obs_kms, dv_clump_kms) if ef > 0 else np.nan
     K_req = clump_count_required(dv_obs_kms, dv_clump_kms)
 
     eta_ok = (not np.isnan(ef)) and (0 < ef <= eta_f_max)

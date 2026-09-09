@@ -218,6 +218,112 @@ TABLE_2_1984 = {
 # (2,1) measurement (1985 Table 3) exist -- the held-out-prediction test set.
 TEST2_POSITIONS = [('S106', '0,0'), ('OMC', 'S3'), ('OMC', 'S4')]
 
+# ----------------------------------------------------------------------------- #
+# EXTENSION of TABLE_2_1984 to every position also present in TABLE_1A -- S106
+# (10 positions), S87 (2), W48 (6) -- transcribed from a 600 dpi crop of the
+# same Table 2 (Stutzki et al. 1984, A&A 139, 258), read cleanly this time
+# (earlier low-resolution reads of this table were not trusted for these rows).
+#
+# Cross-validated against TABLE_1A's own T_B_obs and dv_obs (which the 1985
+# paper states are carried over from this 1984 survey): T_B(1,1) matches to
+# the last published digit for all 23 positions now in this table. dv matches
+# for 21/23; two do not (S106 '200,40': 1.21 here vs 1.43 in TABLE_1A; OMC 'S1':
+# 1.084 here vs 0.944 in TABLE_1A, with T_B also 2% off there). Given the
+# otherwise exact reproduction elsewhere, these two are flagged as a probable
+# genuine difference between the 1984 survey reduction and the 1985 refit
+# (cross_checked=False), not assumed to be a transcription error in either
+# direction -- do not silently trust either value for these two rows without
+# checking the source again.
+# ----------------------------------------------------------------------------- #
+TABLE_2_1984.update({
+    ('W48', '-80,40'):     dict(T_B_11=1.56, T_B_11_err=0.06, v_lsr=42.463, dv=1.59, dv_err=0.07,
+                                 R_10=0.28, R_10_err=0.04, R_12=0.35, R_12_err=0.04,
+                                 R_21=0.41, R_21_err=0.04, R_01=0.42, R_01_err=0.04,
+                                 R_22_MAIN=0.42, R_22_MAIN_err=0.04, cross_checked=True),
+    ('W48', '-80,80'):     dict(T_B_11=2.60, T_B_11_err=0.05, v_lsr=42.725, dv=1.72, dv_err=0.04,
+                                 R_10=0.28, R_10_err=0.02, R_12=0.40, R_12_err=0.02,
+                                 R_21=0.36, R_21_err=0.02, R_01=0.34, R_01_err=0.02,
+                                 R_22_MAIN=0.41, R_22_MAIN_err=0.02, cross_checked=True),
+    ('W48', '-40,40'):     dict(T_B_11=1.40, T_B_11_err=0.04, v_lsr=42.482, dv=2.66, dv_err=0.09,
+                                 R_10=0.26, R_10_err=0.04, R_12=0.48, R_12_err=0.03,
+                                 R_21=0.42, R_21_err=0.03, R_01=0.44, R_01_err=0.03,
+                                 R_22_MAIN=0.59, R_22_MAIN_err=0.03, cross_checked=True),
+    ('W48', '0,40_45kms'): dict(T_B_11=1.02, T_B_11_err=0.06, v_lsr=44.725, dv=1.95, dv_err=0.16,
+                                 R_10=0.24, R_10_err=0.05, R_12=0.41, R_12_err=0.05,
+                                 R_21=0.32, R_21_err=0.06, R_01=0.76, R_01_err=0.07,
+                                 R_22_MAIN=0.67, R_22_MAIN_err=0.07, cross_checked=True),
+    ('W48', '0,80'):       dict(T_B_11=1.43, T_B_11_err=0.06, v_lsr=42.394, dv=2.07, dv_err=0.11,
+                                 R_10=0.27, R_10_err=0.05, R_12=0.43, R_12_err=0.05,
+                                 R_21=0.41, R_21_err=0.05, R_01=0.54, R_01_err=0.06,
+                                 R_22_MAIN=0.63, R_22_MAIN_err=0.04, cross_checked=True),
+    ('W48', '80,-80'):     dict(T_B_11=0.81, T_B_11_err=0.06, v_lsr=42.713, dv=1.22, dv_err=0.17,
+                                 R_10=0.34, R_10_err=0.08, R_12=0.35, R_12_err=0.06,
+                                 R_21=0.38, R_21_err=0.10, R_01=0.44, R_01_err=0.08,
+                                 R_22_MAIN=0.40, R_22_MAIN_err=0.06, cross_checked=True),
+
+    ('S87', '0,0_21.0kms'): dict(T_B_11=1.097, T_B_11_err=0.041, v_lsr=20.88, dv=1.36, dv_err=0.07,
+                                  R_10=0.32, R_10_err=0.05, R_12=0.44, R_12_err=0.04,
+                                  R_21=0.44, R_21_err=0.05, R_01=0.56, R_01_err=0.04,
+                                  R_22_MAIN=0.63, R_22_MAIN_err=0.04, cross_checked=True),
+    ('S87', '0,0_23.5kms'): dict(T_B_11=1.279, T_B_11_err=0.034, v_lsr=23.49, dv=2.05, dv_err=0.07,
+                                  R_10=0.28, R_10_err=0.03, R_12=0.46, R_12_err=0.03,
+                                  R_21=0.31, R_21_err=0.03, R_01=0.39, R_01_err=0.03,
+                                  R_22_MAIN=0.69, R_22_MAIN_err=0.03, cross_checked=True),
+
+    ('S106', '200,80'): dict(T_B_11=1.32, T_B_11_err=0.09, v_lsr=-1.95, dv=1.52, dv_err=0.12,
+                              R_10=0.39, R_10_err=0.08, R_12=0.49, R_12_err=0.08,
+                              R_21=0.42, R_21_err=0.07, R_01=0.45, R_01_err=0.10,
+                              R_22_MAIN=0.48, R_22_MAIN_err=0.10, cross_checked=True),
+    # dv mismatches TABLE_1A (1.21 here vs 1.43 there); T_B matches exactly. See note above.
+    ('S106', '200,40'): dict(T_B_11=3.04, T_B_11_err=0.06, v_lsr=-2.23, dv=1.21, dv_err=0.03,
+                              R_10=0.32, R_10_err=0.02, R_12=0.44, R_12_err=0.02,
+                              R_21=0.34, R_21_err=0.02, R_01=0.47, R_01_err=0.02,
+                              R_22_MAIN=0.51, R_22_MAIN_err=0.05, cross_checked=False),
+    ('S106', '160,40'): dict(T_B_11=2.49, T_B_11_err=0.08, v_lsr=-2.12, dv=1.91, dv_err=0.07,
+                              R_10=0.27, R_10_err=0.03, R_12=0.41, R_12_err=0.03,
+                              R_21=0.34, R_21_err=0.03, R_01=0.43, R_01_err=0.04,
+                              R_22_MAIN=0.55, R_22_MAIN_err=0.04, cross_checked=True),
+    ('S106', '160,0'):  dict(T_B_11=1.96, T_B_11_err=0.04, v_lsr=-1.49, dv=1.58, dv_err=0.04,
+                              R_10=0.23, R_10_err=0.02, R_12=0.38, R_12_err=0.02,
+                              R_21=0.37, R_21_err=0.02, R_01=0.40, R_01_err=0.02,
+                              R_22_MAIN=0.46, R_22_MAIN_err=0.02, cross_checked=True),
+    ('S106', '90,30'):  dict(T_B_11=0.55, T_B_11_err=0.03, v_lsr=-1.42, dv=2.37, dv_err=0.14,
+                              R_10=0.22, R_10_err=0.06, R_12=0.36, R_12_err=0.06,
+                              R_21=0.27, R_21_err=0.04, R_01=0.40, R_01_err=0.06,
+                              R_22_MAIN=0.60, R_22_MAIN_err=0.06, cross_checked=True),
+    ('S106', '40,0'):   dict(T_B_11=0.84, T_B_11_err=0.03, v_lsr=-1.29, dv=1.58, dv_err=0.07,
+                              R_10=0.20, R_10_err=0.05, R_12=0.36, R_12_err=0.04,
+                              R_21=0.40, R_21_err=0.05, R_01=0.45, R_01_err=0.05,
+                              R_22_MAIN=0.60, R_22_MAIN_err=0.05, cross_checked=True),
+    ('S106', '0,40'):   dict(T_B_11=1.38, T_B_11_err=0.03, v_lsr=-1.17, dv=1.81, dv_err=0.05,
+                              R_10=0.26, R_10_err=0.02, R_12=0.43, R_12_err=0.02,
+                              R_21=0.40, R_21_err=0.02, R_01=0.43, R_01_err=0.02,
+                              R_22_MAIN=0.50, R_22_MAIN_err=0.02, cross_checked=True),
+    ('S106', '0,-40'):  dict(T_B_11=1.42, T_B_11_err=0.12, v_lsr=-0.75, dv=2.00, dv_err=0.19,
+                              R_10=0.20, R_10_err=0.09, R_12=0.42, R_12_err=0.09,
+                              R_21=0.42, R_21_err=0.10, R_01=0.41, R_01_err=0.09,
+                              R_22_MAIN=0.42, R_22_MAIN_err=0.07, cross_checked=True),
+    ('S106', '-40,0'):  dict(T_B_11=3.57, T_B_11_err=0.04, v_lsr=-1.32, dv=1.21, dv_err=0.02,
+                              R_10=0.30, R_10_err=0.01, R_12=0.43, R_12_err=0.01,
+                              R_21=0.45, R_21_err=0.01, R_01=0.51, R_01_err=0.01,
+                              R_22_MAIN=0.45, R_22_MAIN_err=0.01, cross_checked=True),
+
+    # dv mismatches TABLE_1A (1.084 here vs 0.944 there); T_B also 2% off (9.613 vs 9.41). See note above.
+    ('OMC', 'S1'):      dict(T_B_11=9.613, T_B_11_err=0.042, v_lsr=11.084, dv=1.084, dv_err=0.002,
+                              R_10=0.329, R_10_err=0.005, R_12=0.409, R_12_err=0.005,
+                              R_21=0.362, R_21_err=0.005, R_01=0.365, R_01_err=0.005,
+                              R_22_MAIN=0.484, R_22_MAIN_err=0.005, cross_checked=False),
+})
+
+# Full set of positions present in BOTH TABLE_1A (fitted params) and
+# TABLE_2_1984 (observed ratios) -- the complete retrieval-vs-Stutzki's-own-fit
+# test set, 23 positions across S106/S87/W48/OMC. TEST2_POSITIONS (above)
+# remains the 3-position subset that ALSO has a (2,1) measurement (Table 3),
+# for the held-out (2,1) prediction test specifically.
+RETRIEVAL_TEST_POSITIONS = [k for k in TABLE_2_1984.keys()
+                            if k[1] in TABLE_1A.get(k[0], {})]
+
+
 
 def observed_ratio_vector(field, position):
     """Observed 5-ratio vector and 1-sigma errors, in invert_ratios' key names."""

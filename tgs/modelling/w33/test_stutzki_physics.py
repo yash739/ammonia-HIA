@@ -41,9 +41,22 @@ def test_clump_count_K_increases_with_density_at_fixed_T_and_etaf():
     """Higher density -> more, smaller Jeans-mass clumps fit in the same
     beam/filling-factor budget -- this is the mechanism behind Stutzki's
     high-density branch being preferred over the low-density one."""
-    K_low_n = clump_count_K(T_k=20.0, n_H2_cm3=10 ** 4.5, eta_f_value=0.3, distance_pc=1000)
-    K_high_n = clump_count_K(T_k=20.0, n_H2_cm3=1e7, eta_f_value=0.3, distance_pc=1000)
+    K_low_n = clump_count_K(T_k=20.0, n_H2_cm3=10 ** 4.5, eta_f_value=0.3, distance_pc=1000,
+                             dv_obs_kms=1.5, dv_clump_kms=0.3)
+    K_high_n = clump_count_K(T_k=20.0, n_H2_cm3=1e7, eta_f_value=0.3, distance_pc=1000,
+                              dv_obs_kms=1.5, dv_clump_kms=0.3)
     assert K_high_n > K_low_n
+
+
+def test_clump_count_K_reproduces_stutzki_table_2a_S106():
+    """Direct numerical reproduction of Stutzki & Winnewisser (1985) Table 2a,
+    S106 (200,40) row: T_k=21.89K, log(n')=6.528, eta_f=0.237,
+    Delta_v_obs=1.43 km/s, Delta_v=0.3 km/s, r=0.60 kpc -> paper's
+    log(K)=1.751 (K=56.36). This is the check that resolved the paper's
+    typeset-ambiguous K formula (see clump_count_K's docstring)."""
+    K = clump_count_K(T_k=21.89, n_H2_cm3=10 ** 6.528, eta_f_value=0.237, distance_pc=600,
+                       dv_obs_kms=1.43, dv_clump_kms=0.3)
+    assert K == pytest.approx(56.36, rel=0.01)
 
 
 def test_physically_consistent_rejects_etaf_above_one():
