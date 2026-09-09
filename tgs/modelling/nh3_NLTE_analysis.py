@@ -164,6 +164,12 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, radius_sphere, ma
         # two can be compared rather than one silently replacing the other.
         I = {k: A[k] * abs(SIG[k]) * np.sqrt(2.0 * np.pi) for k in A}
 
+        # A component pinned at the amplitude lower bound while others carry real
+        # flux means the fit has collapsed rather than measured anything. This
+        # used to pass silently; record it so downstream can reject the row.
+        AMP_FLOOR = 1e-4
+        floor_pinned = int(sum(1 for k in A if A[k] <= AMP_FLOOR * 1.01))
+
         if np.isclose(A['A_MAIN'], 0):
             print(f"WARNING: Main HF component amplitude is zero for T={T_cloud}, n={numberdensity:.2e}. Ratios may be invalid.")
 
@@ -194,6 +200,7 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, radius_sphere, ma
             'RI_21_MAIN': _ratio(I['A_21'], I['A_MAIN']),
             'RI_12_MAIN': _ratio(I['A_12'], I['A_MAIN']),
             # Fitted centres and widths, so a bad fit is diagnosable after the fact.
+            'fit_floor_pinned': floor_pinned,
             'CEN_MAIN': CEN['A_MAIN'], 'SIG_MAIN': SIG['A_MAIN'],
             'FWHM_MAIN': 2.0 * np.sqrt(2.0 * np.log(2.0)) * abs(SIG['A_MAIN']),
             # Hyperfine intensity anomaly, redshifted/blueshifted, integrated

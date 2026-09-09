@@ -120,3 +120,45 @@ def test_covariance_available_when_sigma_supplied():
     assert np.all(np.isfinite(perr)) and np.all(perr > 0)
     # amplitude uncertainty should be of order the noise, not wildly off
     assert 1e-4 < perr[0] < 0.05
+
+
+# --------------------------------------------------------------------------- #
+# Self-absorbed main line -- the high-tau failure mode
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("amps,label", [
+    ([0.22, 0.28, 0.25, 0.28, 0.22], "main absorbed to 0.25"),
+    ([0.30, 0.35, 0.20, 0.35, 0.30], "main below satellites"),
+    ([0.40, 0.45, 0.10, 0.45, 0.40], "deep self-absorption"),
+])
+def test_systemic_velocity_survives_self_absorbed_main(amps, label):
+    """At high optical depth the main line self-absorbs and is no longer the
+    brightest feature. Estimating the systemic velocity from the brightest
+    channel then locks onto an inner satellite 7.6 km/s away, shifts every fit
+    window, and silently returns garbage -- two components at the amplitude
+    floor and one near the main-line amplitude. Observed for real at
+    tau_main = 1.8. The matched filter must not do this."""
+    v, tmb = synth_11(amps)
+    assert hf.estimate_v_sys_kms(v, tmb) == pytest.approx(0.0, abs=0.5), label
+    A, _ = _fit_and_label(v, tmb)
+    for k, truth in zip(hf.NH3_11_KEYS_BY_VELOCITY, amps):
+        assert A[k] == pytest.approx(truth, rel=0.05), f"{label}: {k}"
+
+
+def test_self_absorbed_main_at_w33_systemic_velocity():
+    """Same, offset to W33's v_LSR ~ 36 km/s, so the fix cannot be an accident
+    of the line sitting at zero."""
+    amps = [0.30, 0.35, 0.20, 0.35, 0.30]
+    v, tmb = synth_11(amps, v_sys=36.0)
+    assert hf.estimate_v_sys_kms(v, tmb) == pytest.approx(36.0, abs=0.5)
+    A, _ = _fit_and_label(v, tmb)
+    for k, truth in zip(hf.NH3_11_KEYS_BY_VELOCITY, amps):
+        assert A[k] == pytest.approx(truth, rel=0.05)
+
+
+def test_matched_filter_beats_argmax_on_absorbed_line():
+    """Directly contrast the old and new estimators on the same spectrum."""
+    v, tmb = synth_11([0.30, 0.35, 0.20, 0.35, 0.30])
+    argmax_estimate = float(v[int(np.argmax(tmb))])
+    assert abs(argmax_estimate) > 5.0, "argmax should land on a satellite here"
+    assert abs(hf.estimate_v_sys_kms(v, tmb)) < 0.5

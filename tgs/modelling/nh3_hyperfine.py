@@ -208,16 +208,54 @@ def identify_components(centres_kms, offsets_kms=None, keys=None, max_sep_kms=6.
     return assignment
 
 
-def estimate_v_sys_kms(velos_kms, tmb):
-    """Crude systemic-velocity estimate: the velocity of the brightest channel.
+def estimate_v_sys_kms(velos_kms, tmb, offsets_kms=None, weights=None,
+                        search_pad_kms=2.0):
+    """Systemic velocity, by matched filter against the whole hyperfine pattern.
 
-    For an NH3 (1,1) spectrum the main line is by far the strongest feature, so
-    the global maximum locates it reliably. Used only to *centre* the fit
-    windows below, not as a fitted quantity -- the fit still refines each
-    component's centre within its own window.
+    NOT the velocity of the brightest channel. That assumption -- that the main
+    line is the strongest feature -- fails whenever the main line self-absorbs,
+    which happens at high optical depth exactly where the anomaly is largest.
+
+    Observed failure before this was fixed: at tau_main ~ 1.8 the brightest
+    channel was an inner satellite, so the estimate came out 7.6 km/s off, every
+    per-component fit window shifted with it, and the fit returned garbage --
+    two components pinned at the amplitude floor and one at 0.88 of the main
+    line. Worse, it was SILENT: after the shift the fitted centres still sat
+    within `identify_components`' tolerance of their (equally shifted)
+    expectations, so nothing raised.
+
+    The matched filter scores each trial shift by the pattern-weighted sum of
+    intensity at all five component positions at once. It does not care which
+    individual component is brightest, nor about the anomaly, because it matches
+    the *spacing pattern* rather than any single peak -- a wrong shift aligns at
+    most one component while the correct one aligns all five.
     """
-    velos_kms = np.asarray(velos_kms, dtype=float)
-    return float(velos_kms[int(np.argmax(np.asarray(tmb)))])
+    if offsets_kms is None:
+        offsets_kms = NH3_11_OFFSETS_KMS
+    if weights is None:
+        # LTE optically thin relative intensities; only their ratios matter.
+        weights = np.array([LTE_RATIO_OUTER, LTE_RATIO_INNER, 1.0,
+                             LTE_RATIO_INNER, LTE_RATIO_OUTER])
+        if len(offsets_kms) != len(weights):
+            weights = np.ones(len(offsets_kms))
+    v = np.asarray(velos_kms, dtype=float)
+    t = np.asarray(tmb, dtype=float)
+    offsets_kms = np.asarray(offsets_kms, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+
+    # Trial shifts must keep the whole pattern inside the observed band.
+    lo = v.min() - offsets_kms.min() + search_pad_kms
+    hi = v.max() - offsets_kms.max() - search_pad_kms
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        return float(v[int(np.argmax(t))])          # degenerate band: fall back
+    step = max(abs(v[1] - v[0]), 1e-3) if v.size > 1 else 0.1
+    shifts = np.arange(lo, hi + step, step)
+
+    # Zero outside the band so a partially-overlapping pattern cannot win.
+    score = np.array([np.dot(weights, np.interp(offsets_kms + sh, v, t,
+                                                 left=0.0, right=0.0))
+                      for sh in shifts])
+    return float(shifts[int(np.argmax(score))])
 
 
 # Half-width of each component's centre window [km/s]. Must stay below half the
