@@ -22,6 +22,7 @@ from astropy.io import fits
 from scipy.spatial import Delaunay
 
 import nh3_hyperfine
+import noise as _noise
 
 # -----------------------------
 # Vectorized Physics Functions -- CONSTANT AMMONIA ABUNDANCE HAS BEEN ASSUMED FOR SIMPLICITY
@@ -147,7 +148,8 @@ def _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix):
 
 
 def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=16, save_plot=True,
-                          return_cube=False, save_image_fits=False):
+                          return_cube=False, save_image_fits=False,
+                          noise_rms_K=None, noise_seed=None):
     """Image one line, save the center-beam spectrum FITS/PNG, return (velos, Is)
     or (velos, Is, cube) if return_cube -- cube is the full (ny_pix, nx_pix, nfreq) Tmb
     array, for beam convolution (see imaging.py), not just the center-pixel spectrum.
@@ -184,6 +186,17 @@ def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=1
     if len(velos) > 1 and velos[1] < velos[0]:
         velos = velos[::-1]
         intensities = intensities[:, ::-1]
+
+    # Synthetic observational noise goes in HERE -- on the image, before the
+    # centre-beam extraction and before the FITS write below. That placement
+    # matters: both consumers then see the same realisation, the FITS ->
+    # analyse_spectra path for the (1,1) hyperfine fit and the in-memory
+    # extra_spectra path for the (2,2) peak. Perturbing after the write would
+    # desynchronise them. Noise is added in intensity units, converted from the
+    # Kelvin RMS an observer would quote. See noise.py.
+    if noise_rms_K:
+        intensities = _noise.add_channel_noise(intensities, noise_rms_K, freq_rest,
+                                                seed=noise_seed)
 
     Is = _center_beam_spectrum(intensities, nx_pix, ny_pix)
 
@@ -273,7 +286,7 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
 def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
               image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=10,
               nrays=48, return_cubes=False,
-              save_image_fits=False):
+              save_image_fits=False, noise_rms_K=None, noise_seed=None):
     """
     fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
     sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
@@ -394,10 +407,16 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     all_lines = {'11': fcen_1, '22': fcen_2, **(image_lines or {})}
     extra_spectra = {}
     for label, freq_rest in all_lines.items():
+        # Distinct per-line seed so the (1,1), (2,2) and (2,1) spectra carry
+        # independent noise realisations, as separate observations would, while
+        # the run as a whole stays reproducible from `noise_seed`.
+        line_seed = None if noise_seed is None else _noise.line_seed(noise_seed, label)
         extra_spectra[label] = _image_and_save_line(model, freq_rest, label, odir, tag,
                                                       nx_pix=nx_pix, ny_pix=ny_pix,
                                                       return_cube=return_cubes,
-                                                      save_image_fits=save_image_fits)
+                                                      save_image_fits=save_image_fits,
+                                                      noise_rms_K=noise_rms_K,
+                                                      noise_seed=line_seed)
 
     #tau estimate
     # # Apply Beams
