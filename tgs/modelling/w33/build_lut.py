@@ -73,7 +73,21 @@ REFERENCE_DV_KMS = 0.3
 
 # --- pinned numerics -------------------------------------------------------
 NRAYS = 48
-RESOLUTION = 14
+# Reverted from 14 back to 10: at resolution=14, the exact point
+# (log n=7.3, T=27.8, log_Ndv=14.68) that converges cleanly in 219s at
+# resolution=10 instead froze at fraction_not_converged = 35.7488% across
+# multiple real iterations (confirmed via Magritte's own convergence metric,
+# not a display artifact) in two independent runs on an otherwise-idle
+# machine -- ruling out CPU contention. A third attempt with the model file
+# deliberately deleted first (to rule out a stale/partially-written .hdf5 from
+# an earlier killed process) was in progress when this was reverted; that
+# question is open, not resolved, and resolution=14 should not be reused
+# without either that diagnosis landing clean or a fresh investigation.
+# resolution=10 is the settled-safe choice: verified converging correctly on
+# three real points earlier this session (219-680s), giving 53 interior
+# points per R7's measurement (vs 192 at resolution=14) -- less radial
+# sampling of beta(r), accepted for now to unblock the LUT build.
+RESOLUTION = 10
 MAX_NLTE = 250
 XNH3_FIDUCIAL = 1e-8
 SPECTRUM = 'integrated'      # disc-averaged: what an unresolved source gives
