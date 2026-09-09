@@ -92,6 +92,51 @@ DIGITIZED = _load()
 W33_SOURCES = ('W33_A', 'W33_B', 'W33_Main1', 'W33_A1', 'W33_B1')
 
 
+# --------------------------------------------------------------------------- #
+# L1: model-applicability gate (quadrant test)
+# --------------------------------------------------------------------------- #
+# Zhou et al. (2020) / Wu et al. (2024) convention: HIA_IS/HIA_OS are the
+# redshifted/blueshifted intensity ratios of the inner/outer satellite pairs.
+# Static hyperfine selective trapping predicts HIA_IS < 1, HIA_OS > 1
+# (quadrant II) -- the ONLY quadrant a static constant-density sphere can
+# ever reproduce. Quadrant III (both < 1) is infall, quadrant I (both > 1) is
+# expansion, and quadrant IV (HIA_IS > 1, HIA_OS < 1) is forbidden by both
+# mechanisms. A source outside quadrant II cannot be fit by this pipeline's
+# model at ANY parameters -- this is therefore a gate to run before spending
+# any Magritte time on a source, not a diagnostic to run after.
+QUADRANT_LABELS = {
+    'II': 'static trapping (fittable by a constant-density sphere)',
+    'III': 'infall signature (NOT fittable by a static sphere)',
+    'I': 'expansion signature (NOT fittable by a static sphere)',
+    'IV': 'forbidden by both mechanisms (data inconsistency -- check the source)',
+}
+
+
+def quadrant_gate(source):
+    """Classify a source's (HIA_IS, HIA_OS) quadrant directly from the
+    digitized ratios in observed_data/W33_line_heights.csv, taken as given.
+
+    HIA_IS = R(2->1)/R(1->2) = obs['R_21_MAIN']/obs['R_12_MAIN']
+    HIA_OS = R(0->1)/R(1->0) = obs['R_01_MAIN']/obs['R_10_MAIN']
+    (redshifted/blueshifted, matching Zhou et al. 2020's own convention.)
+
+    Returns dict(HIA_IS, HIA_OS, quadrant, label).
+    """
+    obs, err, _ = observed_ratio_vector(source)
+    HIA_IS = obs['R_21_MAIN'] / obs['R_12_MAIN']
+    HIA_OS = obs['R_01_MAIN'] / obs['R_10_MAIN']
+    if HIA_IS < 1 and HIA_OS > 1:
+        q = 'II'
+    elif HIA_IS < 1 and HIA_OS < 1:
+        q = 'III'
+    elif HIA_IS > 1 and HIA_OS > 1:
+        q = 'I'
+    else:
+        q = 'IV'
+    return dict(source=source, HIA_IS=HIA_IS, HIA_OS=HIA_OS,
+                quadrant=q, label=QUADRANT_LABELS[q])
+
+
 def observed_ratio_vector(source, sigma_frac_floor=0.10):
     """Return (obs, err, meta) for one source's (1,1)/(2,2)/(2,1) ratios.
 

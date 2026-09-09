@@ -50,3 +50,26 @@ def test_ratios_are_between_zero_and_one_where_detected():
         obs, _, _ = wr.observed_ratio_vector(src)
         for k in ('R_01_MAIN', 'R_10_MAIN', 'R_12_MAIN', 'R_21_MAIN'):
             assert 0 < obs[k] < 1, (src, k)
+
+
+def test_quadrant_gate_A_and_B_pass():
+    for src in ('W33_A', 'W33_B'):
+        g = wr.quadrant_gate(src)
+        assert g['quadrant'] == 'II', src
+
+
+def test_quadrant_gate_main1_a1_b1_fail():
+    """Consistent with the reversed/tied inner sense already documented for
+    these three sources: Main1 lands in the forbidden quadrant, A1/B1 in the
+    expansion quadrant. None of the three is fittable by a static sphere at
+    face value on this data."""
+    assert wr.quadrant_gate('W33_Main1')['quadrant'] == 'IV'
+    assert wr.quadrant_gate('W33_A1')['quadrant'] == 'I'
+    assert wr.quadrant_gate('W33_B1')['quadrant'] == 'I'
+
+
+def test_quadrant_gate_matches_hand_computed_HIA():
+    g = wr.quadrant_gate('W33_A')
+    obs, _, _ = wr.observed_ratio_vector('W33_A')
+    assert g['HIA_IS'] == pytest.approx(obs['R_21_MAIN'] / obs['R_12_MAIN'])
+    assert g['HIA_OS'] == pytest.approx(obs['R_01_MAIN'] / obs['R_10_MAIN'])
