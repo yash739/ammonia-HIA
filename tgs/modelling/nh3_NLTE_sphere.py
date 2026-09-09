@@ -125,6 +125,47 @@ def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, defa
         os.remove(input_fits)
 
 
+def stutzki_e_tau(tau):
+    """Stutzki & Winnewisser (1985) Eq. (10): e(tau) = 2[1 - e^-tau (1+tau)]/tau^2.
+
+    This is the disc-averaged replacement for the single-sightline
+    (1 - e^-tau). For a uniform sphere of source function S and radial optical
+    depth tau_G, averaging S(1 - e^-tau(b)) over the projected disc with
+    tau(b) = 2 tau_G sqrt(1-(b/R)^2) gives exactly S[1 - e(2 tau_G)]. Their
+    Sect. 3 warns the difference from exp(-tau) "cannot be neglected when
+    interpreting spectra with high S/N ratio, as the observed anomalous
+    spectra" -- which is why the pipeline must integrate the source rather than
+    sample its centre.
+    """
+    tau = np.asarray(tau, dtype=float)
+    out = np.empty_like(tau)
+    small = np.abs(tau) < 1e-6
+    # series limit e(tau) -> 1 - 2tau/3 as tau -> 0, avoiding 0/0
+    out[small] = 1.0 - 2.0 * tau[small] / 3.0
+    t = tau[~small]
+    out[~small] = 2.0 * (1.0 - np.exp(-t) * (1.0 + t)) / t ** 2
+    return out
+
+
+def _source_integrated_spectrum(image_I, nx_pix, ny_pix):
+    """Mean intensity over the whole image -- the observable for a source that
+    is unresolved by the telescope beam.
+
+    A single-dish measurement of an unresolved clump is the source-integrated
+    emission divided by the beam solid angle (Stutzki Eq. 8), not the intensity
+    along the central line of sight. The two differ substantially: the central
+    chord through a uniform sphere is 2R while the disc-averaged chord is 4R/3,
+    so sampling the centre reports tau_max where the observation averages over
+    a range down to zero at the limb. Because the hyperfine ratios are
+    non-linear in tau, the mean of the ratios is not the ratio of the means.
+
+    Equal-area pixels, so a plain mean over pixels is the area average. The
+    field of view must extend past the limb (fov_pad_factor > 1) or edge pixels
+    clip flux at exactly the low-tau annulus that differs most from the centre.
+    """
+    return np.asarray(image_I).mean(axis=0)
+
+
 def _center_beam_spectrum(image_I, nx_pix, ny_pix):
     """Average the 4 pixels nearest the image center (row-major flattened index)."""
     r0, c0 = ny_pix // 2 - 1, nx_pix // 2 - 1
@@ -149,7 +190,7 @@ def _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix):
 
 def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=16, save_plot=True,
                           return_cube=False, save_image_fits=False,
-                          noise_rms_K=None, noise_seed=None):
+                          noise_rms_K=None, noise_seed=None, spectrum='center'):
     """Image one line, save the center-beam spectrum FITS/PNG, return (velos, Is)
     or (velos, Is, cube) if return_cube -- cube is the full (ny_pix, nx_pix, nfreq) Tmb
     array, for beam convolution (see imaging.py), not just the center-pixel spectrum.
@@ -198,7 +239,9 @@ def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=1
         intensities = _noise.add_channel_noise(intensities, noise_rms_K, freq_rest,
                                                 seed=noise_seed)
 
-    Is = _center_beam_spectrum(intensities, nx_pix, ny_pix)
+    Is_center = _center_beam_spectrum(intensities, nx_pix, ny_pix)
+    Is_integrated = _source_integrated_spectrum(intensities, nx_pix, ny_pix)
+    Is = Is_integrated if spectrum == 'integrated' else Is_center
 
     if save_plot:
         fig, ax = plt.subplots()
@@ -213,8 +256,8 @@ def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=1
 
     if return_cube:
         cube = _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix)
-        return velos, Is, cube
-    return velos, Is
+        return velos, Is, cube, Is_center, Is_integrated
+    return velos, Is, Is_center, Is_integrated
 
 
 def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor=1.0,
@@ -286,7 +329,8 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
 def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
               image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=10,
               nrays=48, return_cubes=False,
-              save_image_fits=False, noise_rms_K=None, noise_seed=None):
+              save_image_fits=False, noise_rms_K=None, noise_seed=None,
+              spectrum='center'):
     """
     fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
     sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
@@ -411,12 +455,23 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
         # independent noise realisations, as separate observations would, while
         # the run as a whole stays reproducible from `noise_seed`.
         line_seed = None if noise_seed is None else _noise.line_seed(noise_seed, label)
-        extra_spectra[label] = _image_and_save_line(model, freq_rest, label, odir, tag,
-                                                      nx_pix=nx_pix, ny_pix=ny_pix,
-                                                      return_cube=return_cubes,
-                                                      save_image_fits=save_image_fits,
-                                                      noise_rms_K=noise_rms_K,
-                                                      noise_seed=line_seed)
+        out = _image_and_save_line(model, freq_rest, label, odir, tag,
+                                    nx_pix=nx_pix, ny_pix=ny_pix,
+                                    return_cube=return_cubes,
+                                    save_image_fits=save_image_fits,
+                                    noise_rms_K=noise_rms_K,
+                                    noise_seed=line_seed, spectrum=spectrum)
+        # Canonical entry keeps the historical (velos, Is[, cube]) shape so
+        # existing unpacking still works; both variants are additionally exposed
+        # under explicit keys so a caller never has to guess which it received.
+        if return_cubes:
+            velos_l, Is_l, cube_l, Is_c, Is_i = out
+            extra_spectra[label] = (velos_l, Is_l, cube_l)
+        else:
+            velos_l, Is_l, Is_c, Is_i = out
+            extra_spectra[label] = (velos_l, Is_l)
+        extra_spectra[f'{label}_center'] = (velos_l, Is_c)
+        extra_spectra[f'{label}_integrated'] = (velos_l, Is_i)
 
     #tau estimate
     # # Apply Beams
