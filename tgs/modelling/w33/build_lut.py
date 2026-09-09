@@ -73,7 +73,7 @@ REFERENCE_DV_KMS = 0.3
 
 # --- pinned numerics -------------------------------------------------------
 NRAYS = 48
-RESOLUTION = 10
+RESOLUTION = 14
 MAX_NLTE = 250
 XNH3_FIDUCIAL = 1e-8
 SPECTRUM = 'integrated'      # disc-averaged: what an unresolved source gives
@@ -106,9 +106,27 @@ def grid_axes():
     return log_n, T, log_ndv
 
 
-def grid_points():
+# Stutzki & Winnewisser (1985) Fig. 4 panel temperatures. Verified to land
+# exactly on the T axis, and his Fig. 4 axis ranges (log n 3.5-6.5,
+# log N/dv 14.2-15.6) sit inside ours, so these rows reproduce his figure.
+PAPER1_TEMPERATURES = (18.0, 24.0, 30.0, 36.0)
+
+
+def grid_points(paper1_first=True):
+    """Grid points, by default ordered so Paper I's Fig. 4 slice completes first.
+
+    That slice is 17 x 4 x 10 = 680 models, 31% of the table, so ordering it to
+    the front makes the figure available roughly a third of the way through the
+    build instead of at the end. The remaining temperatures fill in behind it
+    and block nothing. Resumption is by grid key, so the ordering is free.
+    """
     log_n, T, log_ndv = grid_axes()
-    return [(float(a), float(b), float(c)) for a in log_n for b in T for c in log_ndv]
+    pts = [(float(a), float(b), float(c)) for a in log_n for b in T for c in log_ndv]
+    if not paper1_first:
+        return pts
+    first = [q for q in pts if any(abs(q[1] - t) < 1e-9 for t in PAPER1_TEMPERATURES)]
+    rest = [q for q in pts if not any(abs(q[1] - t) < 1e-9 for t in PAPER1_TEMPERATURES)]
+    return first + rest
 
 
 def radius_from_N_dv(N_NH3_per_dv, dv_kms, numberdensity, XNH3):
