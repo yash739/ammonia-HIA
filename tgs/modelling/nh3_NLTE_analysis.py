@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from scipy.optimize import curve_fit
 
+import nh3_hyperfine as hf
+
 # -----------------------------
 # Module-Level Constants
 # -----------------------------
@@ -40,32 +42,48 @@ def multi_gaussian(v, *pars):
     sigs = pars[:, 2, np.newaxis]
     return np.sum(amps * np.exp(-0.5 * ((v - cens) / sigs)**2), axis=0)
 
-def fit_five_gaussians(v, tmb, number):
-    idx_max = np.argmax(tmb)
-    amp_pk = tmb[idx_max]
-    width = (v[-1] - v[0]) / 40.0
-    
-    multiplier = 10 if number == 'one' else 15
-    centres = np.linspace((v[0] + v[-1])/2 - multiplier*width, (v[0] + v[-1])/2 + multiplier*width, 5)
-    
-    p0 = []
-    for c_ in centres:
-        p0.extend([max(amp_pk/3, 1e-3), c_, width])
-        
-    lower_bounds = []
-    for i in range(15):
-        if i % 3 == 0:
-            lower_bounds.append(1e-4)   # Amplitude > 0
-        elif i % 3 == 2:
-            lower_bounds.append(1e-6)   # Sigma > 0
-        else:
-            lower_bounds.append(-np.inf) # Center unbound
-            
-    upper_bounds = [np.inf] * 15
-    
-    # Dropped maxfev to 50000. If it hasn't converged by then, it's spinning its wheels.
-    pars, _ = curve_fit(multi_gaussian, v, tmb, p0=p0, bounds=(lower_bounds, upper_bounds), maxfev=50000)
+def fit_five_gaussians(v, tmb, number, sigma=None, return_cov=False,
+                        amp_min=1e-4, sigma_max_kms=3.0):
+    """Fit the five hyperfine groups with centres seeded at their true offsets
+    and bounded so they cannot swap.
+
+    Previously the centres were seeded uniformly across the window and left
+    completely unbounded (-inf, +inf), with components then identified by their
+    position in the parameter vector. That is unsafe: under noise a component
+    can drift, cross a neighbour, or collapse onto the same peak, silently
+    permuting the index -> component mapping. Here each centre is seeded at its
+    known offset (shifted by the observed systemic velocity) and confined to a
+    window narrower than half the smallest component separation, so the mapping
+    cannot permute -- and `analyse_spectra` still verifies it by centre rather
+    than trusting order.
+
+    `sigma`: per-channel uncertainty, passed through to curve_fit. Supply it
+    (e.g. the injected noise RMS) whenever `return_cov` is used -- without it
+    curve_fit rescales the covariance by the residual variance, which on a
+    noiseless model spectrum is numerical junk rather than an uncertainty.
+    """
+    offsets = hf.NH3_11_OFFSETS_KMS if number == 'one' else hf.NH3_22_OFFSETS_KMS
+    v = np.asarray(v, dtype=float)
+    tmb = np.asarray(tmb, dtype=float)
+
+    v_sys = hf.estimate_v_sys_kms(v, tmb)
+    centres, c_lo, c_hi = hf.initial_centres_and_bounds(offsets, v_sys_kms=v_sys)
+
+    amp_pk = float(np.max(tmb))
+    width0 = min(max((v[-1] - v[0]) / 40.0, 1e-3), sigma_max_kms * 0.5)
+
+    p0, lower, upper = [], [], []
+    for c, clo, chi in zip(centres, c_lo, c_hi):
+        p0.extend([max(amp_pk / 3, 1e-3), c, width0])
+        lower.extend([amp_min, clo, 1e-6])
+        upper.extend([np.inf, chi, sigma_max_kms])
+
+    pars, pcov = curve_fit(multi_gaussian, v, tmb, p0=p0, bounds=(lower, upper),
+                            sigma=sigma, absolute_sigma=sigma is not None, maxfev=50000)
+    if return_cov:
+        return pars, pcov
     return pars
+
 
 # -----------------------------
 # Main Analysis Function
@@ -126,13 +144,27 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, radius_sphere, ma
             fig.savefig(os.path.join(image_subdir, f'NLTE_nh3_1122_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_fit.png'))
             plt.close(fig) # Critical to prevent memory leaks
 
-        # Extract Amplitudes
-        amps11 = p11[0:15:3]
-        
-        # Verify valid data
-        if len(amps11) != 5:
-            raise RuntimeError("Expected 5 hyperfine amplitudes.")
-        if np.isclose(amps11[2], 0):
+        # -----------------------------
+        # Identify components by fitted CENTRE, not by parameter index.
+        # See nh3_hyperfine.py: index-based assignment mislabelled the outer
+        # satellite pair (A_01 / A_10 swapped), which inverts the very asymmetry
+        # the hyperfine anomaly consists of.
+        # -----------------------------
+        amps11_raw = p11[0:15:3]
+        cens11_raw = p11[1:15:3]
+        sigs11_raw = p11[2:15:3]
+        idx = hf.identify_components(cens11_raw - hf.estimate_v_sys_kms(velos1, Tmb1_corrected))
+
+        A = {k: float(amps11_raw[i]) for k, i in idx.items()}
+        CEN = {k: float(cens11_raw[i]) for k, i in idx.items()}
+        SIG = {k: float(sigs11_raw[i]) for k, i in idx.items()}
+        # Integrated intensity of a Gaussian [K km/s]. Zhou et al. (2020) show
+        # the peak-ratio anomaly estimator is biased along the velocity-dispersion
+        # axis and recommend integrated intensities; both are reported here so the
+        # two can be compared rather than one silently replacing the other.
+        I = {k: A[k] * abs(SIG[k]) * np.sqrt(2.0 * np.pi) for k in A}
+
+        if np.isclose(A['A_MAIN'], 0):
             print(f"WARNING: Main HF component amplitude is zero for T={T_cloud}, n={numberdensity:.2e}. Ratios may be invalid.")
 
         # Delete the FITS files after analysis is complete
@@ -141,14 +173,39 @@ def analyse_spectra(odir, XNH3, numberdensity, vturb, T_cloud, radius_sphere, ma
                 os.remove(filename)
                 
         # Return the payload dictionary to the main thread delivery system
-        return {
-            'A_10': amps11[0], 'A_21': amps11[1], 'A_MAIN': amps11[2], 'A_12': amps11[3], 'A_01': amps11[4],
-            'R_01_MAIN': amps11[4]/amps11[2] if amps11[2] != 0 else np.nan,
-            'R_10_MAIN': amps11[0]/amps11[2] if amps11[2] != 0 else np.nan,
-            'R_21_MAIN': amps11[1]/amps11[2] if amps11[2] != 0 else np.nan,
-            'R_12_MAIN': amps11[3]/amps11[2] if amps11[2] != 0 else np.nan,
+        def _ratio(num, den):
+            return num / den if den != 0 else np.nan
+
+        out = {
+            # Peak amplitudes -- same keys and meaning as before, but now
+            # correctly identified (the outer pair used to be swapped).
+            'A_10': A['A_10'], 'A_21': A['A_21'], 'A_MAIN': A['A_MAIN'],
+            'A_12': A['A_12'], 'A_01': A['A_01'],
+            'R_01_MAIN': _ratio(A['A_01'], A['A_MAIN']),
+            'R_10_MAIN': _ratio(A['A_10'], A['A_MAIN']),
+            'R_21_MAIN': _ratio(A['A_21'], A['A_MAIN']),
+            'R_12_MAIN': _ratio(A['A_12'], A['A_MAIN']),
+            # Integrated intensities [K km/s] and their ratios -- the less biased
+            # estimator (Zhou et al. 2020).
+            'I_10': I['A_10'], 'I_21': I['A_21'], 'I_MAIN': I['A_MAIN'],
+            'I_12': I['A_12'], 'I_01': I['A_01'],
+            'RI_01_MAIN': _ratio(I['A_01'], I['A_MAIN']),
+            'RI_10_MAIN': _ratio(I['A_10'], I['A_MAIN']),
+            'RI_21_MAIN': _ratio(I['A_21'], I['A_MAIN']),
+            'RI_12_MAIN': _ratio(I['A_12'], I['A_MAIN']),
+            # Fitted centres and widths, so a bad fit is diagnosable after the fact.
+            'CEN_MAIN': CEN['A_MAIN'], 'SIG_MAIN': SIG['A_MAIN'],
+            'FWHM_MAIN': 2.0 * np.sqrt(2.0 * np.log(2.0)) * abs(SIG['A_MAIN']),
+            # Hyperfine intensity anomaly, redshifted/blueshifted, integrated
+            # (Zhou et al. 2020; Wu et al. 2024 convention). Static hyperfine
+            # selective trapping predicts HIA_IS < 1 and HIA_OS > 1 (quadrant II);
+            # infall gives both < 1, expansion both > 1. A source outside
+            # quadrant II cannot be reproduced by a static constant-density model.
+            'HIA_IS': _ratio(I['A_21'], I['A_12']),
+            'HIA_OS': _ratio(I['A_01'], I['A_10']),
             'N_NH3': escape_probability(vturb/1000, radius_sphere, numberdensity, XNH3)
         }
+        return out
 
     except Exception as e:
         raise RuntimeError(f"Spectral analysis failed: {e}")

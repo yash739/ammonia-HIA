@@ -220,11 +220,27 @@ def merge_top_k(survivors, new_scored, K):
 # Stage 0: free catalogue lookup before any new compute
 # --------------------------------------------------------------------------- #
 
-def catalogue_lookup(obs_ratios, obs_sigmas=None, catalogue_paths=None, top_k=20):
+# Both pre-existing catalogues were produced BEFORE the hyperfine labelling fix,
+# so their R_01_MAIN / R_10_MAIN columns have the outer satellite pair swapped
+# (see nh3_hyperfine.py). Scoring an observed vector against them would seed the
+# search from a mirrored anomaly. They are therefore quarantined: seeding is OFF
+# by default and must be re-enabled explicitly, which should only happen once a
+# catalogue has been regenerated with corrected labels.
+QUARANTINED_CATALOGUES = (GENERAL_CATALOGUE, W33_CATALOGUE)
+
+
+def catalogue_lookup(obs_ratios, obs_sigmas=None, catalogue_paths=None, top_k=20,
+                      allow_quarantined=False):
     """Scores against RATIO_KEYS_LEGACY (4 ratios) since neither existing
     catalogue computed R_22_MAIN -- this is a cheap SEED for Stage 1's bounds
-    only, not part of the actual (5-ratio) fit."""
-    catalogue_paths = catalogue_paths or [GENERAL_CATALOGUE, W33_CATALOGUE]
+    only, not part of the actual (5-ratio) fit.
+
+    Returns None unless `catalogue_paths` names a catalogue built after the
+    hyperfine labelling fix, or `allow_quarantined=True` is passed deliberately.
+    """
+    if catalogue_paths is None and not allow_quarantined:
+        return None
+    catalogue_paths = catalogue_paths or list(QUARANTINED_CATALOGUES)
     obs_vec = np.array([obs_ratios[k] for k in RATIO_KEYS_LEGACY])
     sigma_vec = (np.array([obs_sigmas.get(k, np.nan) for k in RATIO_KEYS_LEGACY])
                  if obs_sigmas is not None else None)
@@ -383,7 +399,9 @@ def invert_ratio_vector(obs_ratios, obs_sigmas=None, T_kin_fixed=None,
         bounds = Bounds(log_n_lo=2.5, log_n_hi=6.5, T_lo=8.0, T_hi=60.0,
                           log_Ndv_lo=13.5, log_Ndv_hi=15.5)  # Stutzki's own N/dv range as a default
         catalogue_seed_used, catalogue_seed_caveat = False, None
-        print(f"Stage 0: no usable catalogue seed -> Stutzki's own default range {bounds}")
+        print("Stage 0: no catalogue seed (pre-fix catalogues are quarantined -- their "
+              "outer-satellite labels are swapped) -> Stutzki's own default range "
+              f"{bounds}")
 
     if T_kin_fixed is not None:
         bounds.T_lo = bounds.T_hi = T_kin_fixed

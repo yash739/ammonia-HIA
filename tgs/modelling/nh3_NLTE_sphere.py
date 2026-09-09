@@ -21,6 +21,8 @@ from astropy import constants
 from astropy.io import fits
 from scipy.spatial import Delaunay
 
+import nh3_hyperfine
+
 # -----------------------------
 # Vectorized Physics Functions -- CONSTANT AMMONIA ABUNDANCE HAS BEEN ASSUMED FOR SIMPLICITY
 # -----------------------------
@@ -93,15 +95,107 @@ def add_carta_beams_to_fits(input_fits, default_bmaj_deg, default_bmin_deg, defa
         os.remove(input_fits)
 
 
-def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16):
-    
-    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.hdf5')
+def _center_beam_spectrum(image_I, nx_pix, ny_pix):
+    """Average the 4 pixels nearest the image center (row-major flattened index)."""
+    r0, c0 = ny_pix // 2 - 1, nx_pix // 2 - 1
+    idx = [r0 * nx_pix + c0, r0 * nx_pix + c0 + 1, (r0 + 1) * nx_pix + c0, (r0 + 1) * nx_pix + c0 + 1]
+    return sum(image_I[i, :] for i in idx) / 4
+
+
+T_CMB_K = 2.725
+
+
+def _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix):
+    """Flattened (npix, nfreq) raw intensity -> (ny_pix, nx_pix, nfreq) Tmb cube
+    (Rayleigh-Jeans, CMB-subtracted) -- the layout imaging.convolve_beam expects."""
+    c = constants.c.si.value
+    k_B = constants.k_B.si.value
+    h = constants.h.si.value
+    Tmb_flat = (c**2 * intensities) / (2 * k_B * freq_rest**2)
+    Tmb_flat -= (h * freq_rest / k_B) / np.expm1(h * freq_rest / (k_B * T_CMB_K))
+    nfreq = intensities.shape[1]
+    return Tmb_flat.reshape(ny_pix, nx_pix, nfreq)
+
+
+def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=16, save_plot=True,
+                          return_cube=False, save_image_fits=False):
+    """Image one line, save the center-beam spectrum FITS/PNG, return (velos, Is)
+    or (velos, Is, cube) if return_cube -- cube is the full (ny_pix, nx_pix, nfreq) Tmb
+    array, for beam convolution (see imaging.py), not just the center-pixel spectrum.
+
+    save_image_fits: off by default. tools.save_fits() re-interpolates onto its own
+    hardcoded 300x300 grid regardless of nx_pix/ny_pix, so each file is ~340MB
+    (300*300*500freq*8B) no matter how coarse the actual image is -- and nothing in
+    this pipeline (screen.py, analyse_spectra, stageb_pilot) reads it back; the cube
+    used for analysis/convolution comes from model.images[-1].I in memory. Across a
+    multi-hundred-point grid this is pure disk waste (measured: 176GB for 420 Stage A
+    points). Only pass True for a one-off candidate you actually want to inspect
+    (e.g. in CARTA) -- and pass npix_x/npix_y matching the real resolution then, not
+    the wasteful default.
+    """
+    model.compute_spectral_discretisation(freq_rest - 3000000.00, freq_rest + 3000000.00, 500)
+    model.compute_image_new(0, nx_pix, ny_pix)
+
+    if save_image_fits:
+        img_fits = os.path.join(odir, f'fits/NLTE_nh3_image_{label}_{tag}.fits')
+        tools.save_fits(model, filename=img_fits, npix_x=nx_pix, npix_y=ny_pix)
+
+    # Standard radio/LSR convention: v = c (nu_rest - nu) / nu_rest, so positive
+    # velocity is redshifted (LOWER frequency). This pipeline previously used the
+    # opposite sign, c (nu - nu_rest) / nu_rest, which mirrored every spectrum
+    # relative to Stutzki's Fig. 1 and to observed data while the FITS header
+    # below still declared CTYPE1 = 'VELO-LSR'. See nh3_hyperfine.py.
+    freqs = np.array(model.images[-1].freqs)
+    velos = nh3_hyperfine.freq_to_radio_velocity_kms(freqs, freq_rest)
+    intensities = np.array(model.images[-1].I)[:, :]
+
+    # Frequencies ascend, so radio-convention velocities descend. Reverse both so
+    # the returned spectrum is ascending in velocity, which is what every
+    # consumer (plotting, baseline fitting, FITS CDELT1) expects.
+    if len(velos) > 1 and velos[1] < velos[0]:
+        velos = velos[::-1]
+        intensities = intensities[:, ::-1]
+
+    Is = _center_beam_spectrum(intensities, nx_pix, ny_pix)
+
+    if save_plot:
+        fig, ax = plt.subplots()
+        ax.plot(velos, Is)
+        fig.savefig(os.path.join(odir, f'images/NLTE_nh3_{label}_{tag}.png'))
+        plt.close(fig)
+
+    hdu = fits.PrimaryHDU(Is)
+    hdu.header.update({'CRVAL1': velos[0], 'CDELT1': velos[1] - velos[0], 'CTYPE1': 'VELO-LSR',
+                        'CUNIT1': 'km/s', 'NAXIS1': len(velos), 'RESTFREQ': freq_rest, 'CRPIX1': 1})
+    hdu.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_{label}_{tag}.fits'), overwrite=True)
+
+    if return_cube:
+        cube = _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix)
+        return velos, Is, cube
+    return velos, Is
+
+
+def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
+              image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=5, return_cubes=False,
+              save_image_fits=False):
+    """
+    fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
+    sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
+    boundary at r_out, no sky padding -- this is what Magritte's imager then uses
+    as the image field of view (see image.cpp set_coordinates_projection_surface),
+    so an unpadded image is exactly source-diameter-wide with no room for a beam
+    convolution kernel to see real background. Pass e.g. 5.0 to place the boundary
+    (and a coarse background-density fringe) 5x further out, giving a convolution
+    real sky to sample instead of replicating source-edge brightness.
+    """
+
+    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_pad{fov_pad_factor}_res{resolution}.hdf5')
     lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt')
 
     m_H2 = 2.01588 * constants.u.si.value
-    rho_cloud = numberdensity * 1.0E6 * m_H2   
-    r_out = radius_sphere / 100  
-    resolution = 5
+    rho_cloud = numberdensity * 1.0E6 * m_H2
+    r_out = radius_sphere / 100
+    r_boundary = r_out * fov_pad_factor
 
     xs = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
     ys = np.linspace(-r_out * 1.2, +r_out * 1.2, resolution, endpoint=True)
@@ -109,6 +203,19 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     Xs, Ys, Zs = np.meshgrid(xs, ys, zs)
 
     position = np.column_stack((Xs.ravel(), Ys.ravel(), Zs.ravel()))
+
+    if fov_pad_factor > 1.2:
+        # Coarse background-density fringe out to r_boundary, so the imager's FOV
+        # (== the mesh's outer boundary) extends several beam-widths past the
+        # source instead of stopping exactly at its edge. Low resolution is fine:
+        # this shell is uniform low density, so it carries little information and
+        # the density-aware remesher below will thin it further on its own.
+        pad_res = 5
+        pxs = np.linspace(-r_boundary, +r_boundary, pad_res, endpoint=True)
+        PXs, PYs, PZs = np.meshgrid(pxs, pxs, pxs)
+        pad_position = np.column_stack((PXs.ravel(), PYs.ravel(), PZs.ravel()))
+        pad_position = pad_position[np.linalg.norm(pad_position, axis=1) > r_out * 1.2]
+        position = np.vstack((position, pad_position))
 
     # Rough density map for remesher
     r_dist = np.linalg.norm(position, axis=1)
@@ -124,7 +231,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
         positions_reduced, nb_boundary, 0.01 * r_out, healpy_order=3, origin=origin
     )
     positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_outer_boundary(
-        positions_reduced, nb_boundary, r_out, healpy_order=3, origin=origin
+        positions_reduced, nb_boundary, r_boundary, healpy_order=3, origin=origin
     )
     npoints = len(positions_reduced)
 
@@ -204,54 +311,27 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     info = model.compute_level_populations_sparse(True, max_NLTE)
     
     # -----------------------------
-    # 1st Line Processing
+    # (1,1) and (2,2) processing -- filenames/behaviour unchanged from before the refactor
     # -----------------------------
+    tag = f'{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}'
     fcen_1 = 23694494829.874
-    model.compute_spectral_discretisation(fcen_1 - 3000000.00, fcen_1 + 3000000.00, 500)
-    model.compute_image_new(0, 16, 16)
-
-    img1_fits = os.path.join(odir, f'fits/NLTE_nh3_image_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
-    # tools.save_fits(model, filename=img1_fits)
-
-    velos1 = (np.array(model.images[-1].freqs) - fcen_1) / fcen_1 * 3e8 / 1000
-    intensities1 = np.array(model.images[-1].I)[:, :]
-    Is1 = (intensities1[119, :] + intensities1[120, :] + intensities1[135, :] + intensities1[136, :]) / 4
-
-    # Safe plotting to avoid memory leak
-    fig, ax = plt.subplots()
-    ax.plot(velos1, Is1)
-    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png'))
-    plt.close(fig)
-
-    hdu1 = fits.PrimaryHDU(Is1)
-    hdu1.header.update({'CRVAL1': velos1[0], 'CDELT1': velos1[1] - velos1[0], 'CTYPE1': 'VELO-LSR', 
-                        'CUNIT1': 'km/s', 'NAXIS1': len(velos1), 'RESTFREQ': fcen_1, 'CRPIX1': 1})
-    hdu1.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_11_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'), overwrite=True)
-
-    # -----------------------------
-    # 2nd Line Processing
-    # -----------------------------
     fcen_2 = model.lines.lineProducingSpecies[0].linedata.frequency[6]
-    model.compute_spectral_discretisation(fcen_2 - 3000000.00, fcen_2 + 3000000.00, 500)
-    model.compute_image_new(0, 16, 16)
 
-    img2_fits = os.path.join(odir, f'fits/NLTE_nh3_image_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits')
-    # tools.save_fits(model, filename=img2_fits)
-
-    velos2 = (np.array(model.images[-1].freqs) - fcen_2) / fcen_2 * 3e8 / 1000
-    intensities2 = np.array(model.images[-1].I)[:, :]
-    Is2 = (intensities2[119, :] + intensities2[120, :] + intensities2[135, :] + intensities2[136, :]) / 4
-
-    # Safe plotting
-    fig, ax = plt.subplots()
-    ax.plot(velos2, Is2)
-    fig.savefig(os.path.join(odir, f'images/NLTE_nh3_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.png'))
-    plt.close(fig)
-
-    hdu2 = fits.PrimaryHDU(Is2)
-    hdu2.header.update({'CRVAL1': velos2[0], 'CDELT1': velos2[1] - velos2[0], 'CTYPE1': 'VELO-LSR', 
-                        'CUNIT1': 'km/s', 'NAXIS1': len(velos2), 'RESTFREQ': fcen_2, 'CRPIX1': 1})
-    hdu2.writeto(os.path.join(odir, f'fits/NLTE_nh3_spectrum_22_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}.fits'), overwrite=True)
+    # -----------------------------
+    # Every imaged line's (velos, Is[, cube]) -- '11'/'22' always included alongside
+    # any additional lines requested (e.g. (2,1), (4,4)) -- label -> rest freq [Hz].
+    # A single unified loop (not '11'/'22' imaged separately, then again here) --
+    # imaging is a real compute cost, imaging the same line twice would double it.
+    # Nothing outside this session's own code reads this dict, so including '11'/'22'
+    # here is not a compatibility break.
+    # -----------------------------
+    all_lines = {'11': fcen_1, '22': fcen_2, **(image_lines or {})}
+    extra_spectra = {}
+    for label, freq_rest in all_lines.items():
+        extra_spectra[label] = _image_and_save_line(model, freq_rest, label, odir, tag,
+                                                      nx_pix=nx_pix, ny_pix=ny_pix,
+                                                      return_cube=return_cubes,
+                                                      save_image_fits=save_image_fits)
 
     #tau estimate
     # # Apply Beams
@@ -283,8 +363,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     tau_main = tau_main_flat[120]
 
-    
-    return info + (tau_main,)
+    return info + (tau_main, extra_spectra)
 
 if __name__ == "__main__":
     run_model(wdir="./", odir="./", XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16)
