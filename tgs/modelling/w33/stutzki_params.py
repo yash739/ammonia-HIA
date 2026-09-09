@@ -155,3 +155,77 @@ def iter_table_3_21():
     with a real published (2,1)/(1,1) observation."""
     for (field, position), entry in TABLE_3_21.items():
         yield field, position, entry, fit(field, position)
+
+
+# ----------------------------------------------------------------------------- #
+# Stutzki, Jackson, Olberg, Barrett & Winnewisser (1984), A&A 139, 258, Table 2:
+# "Sources with hfs-anomalies" -- the OBSERVED (1,1) satellite/main intensity
+# ratios, with errors, plus T_B(2,2)/T_B(1,1).
+#
+# This is the measured five-ratio vector, i.e. exactly the observable set the
+# inversion pipeline fits (RATIO_KEYS in invert_ratios.py). The 1985 paper does
+# NOT publish these -- it gives fitted parameters (its Table 1a) and the (2,1)
+# data (its Table 3) -- so this table is what makes an independent retrieval
+# possible: fit these ratios, recover (T_k, n_H2, N/dv), compare against
+# Stutzki's own fit, and then predict (2,1) as a held-out test.
+#
+# Effelsberg 100 m, 40" beam at the inversion frequencies; satellite/main ratios
+# quoted to better than 3% (their Sect. II).
+#
+# Ratio keys use OUR convention, which matches theirs: R_10 is F1 = 1->0
+# (blueshifted outer), R_01 is F1 = 0->1 (redshifted outer), R_12 is 1->2
+# (blueshifted inner), R_21 is 2->1 (redshifted inner). See nh3_hyperfine.py.
+#
+# TRANSCRIBED FROM A SCAN, then cross-validated: T_B(1,1) for S106 (0,0), OMC S3
+# and OMC S4 reproduces TABLE_3_21 exactly, and dv reproduces TABLE_1A's dv_obs
+# exactly, for all three. Rows without that overlap have not been independently
+# checked -- verify against the paper before relying on them quantitatively.
+#
+# Positions (Table 1, B1950): OMC2 05 32 58.6 -05 11 42; S1 05 32 54.7 -05 14 04;
+# S2 05 32 53.5 -05 16 25; S3 05 32 49.3 -05 21 02; S4 05 32 48.0 -05 22 02;
+# S106 20 25 25 +37 12 30. The OMC positions convert to roughly Dec -05 09 to
+# -05 20 in J2000, i.e. inside the GAS Orion A footprint (-05 30 to -05 00), so
+# modern high-S/N spectra exist at these same positions.
+# ----------------------------------------------------------------------------- #
+TABLE_2_1984 = {
+    ('OMC', 'OMC2'): dict(T_B_11=4.752, T_B_11_err=0.039, v_lsr=11.2, dv=1.259, dv_err=0.012,
+                           R_10=0.240, R_10_err=0.026, R_12=0.325, R_12_err=0.009,
+                           R_21=0.313, R_21_err=0.009, R_01=0.329, R_01_err=0.005,
+                           R_22_MAIN=0.572, R_22_MAIN_err=0.009, cross_checked=False),
+    ('OMC', 'S1'):   dict(T_B_11=9.613, T_B_11_err=0.042, v_lsr=11.084, dv=1.084, dv_err=0.002,
+                           R_10=0.329, R_10_err=0.005, R_12=0.409, R_12_err=0.005,
+                           R_21=0.362, R_21_err=0.005, R_01=0.365, R_01_err=0.005,
+                           R_22_MAIN=0.484, R_22_MAIN_err=0.005, cross_checked=False),
+    ('OMC', 'S2'):   dict(T_B_11=5.132, T_B_11_err=0.068, v_lsr=10.797, dv=0.637, dv_err=0.004,
+                           R_10=0.281, R_10_err=0.016, R_12=0.325, R_12_err=0.013,
+                           R_21=0.367, R_21_err=0.014, R_01=0.412, R_01_err=0.014,
+                           R_22_MAIN=0.518, R_22_MAIN_err=0.013, cross_checked=False),
+    ('OMC', 'S3'):   dict(T_B_11=7.115, T_B_11_err=0.049, v_lsr=9.873, dv=1.506, dv_err=0.033,
+                           R_10=0.245, R_10_err=0.008, R_12=0.372, R_12_err=0.007,
+                           R_21=0.336, R_21_err=0.007, R_01=0.377, R_01_err=0.008,
+                           R_22_MAIN=0.632, R_22_MAIN_err=0.007, cross_checked=True),
+    ('OMC', 'S4'):   dict(T_B_11=6.558, T_B_11_err=0.084, v_lsr=9.698, dv=1.106, dv_err=0.021,
+                           R_10=0.248, R_10_err=0.008, R_12=0.361, R_12_err=0.008,
+                           R_21=0.317, R_21_err=0.008, R_01=0.378, R_01_err=0.008,
+                           R_22_MAIN=0.693, R_22_MAIN_err=0.022, cross_checked=True),
+    ('S106', '0,0'): dict(T_B_11=4.713, T_B_11_err=0.036, v_lsr=-1.24, dv=1.470, dv_err=0.021,
+                           R_10=0.294, R_10_err=0.014, R_12=0.456, R_12_err=0.014,
+                           R_21=0.428, R_21_err=0.014, R_01=0.505, R_01_err=0.015,
+                           R_22_MAIN=0.522, R_22_MAIN_err=0.020, cross_checked=True),
+}
+
+# Positions where BOTH the observed (1,1) ratio vector (1984 Table 2) and the
+# (2,1) measurement (1985 Table 3) exist -- the held-out-prediction test set.
+TEST2_POSITIONS = [('S106', '0,0'), ('OMC', 'S3'), ('OMC', 'S4')]
+
+
+def observed_ratio_vector(field, position):
+    """Observed 5-ratio vector and 1-sigma errors, in invert_ratios' key names."""
+    e = TABLE_2_1984[(field, position)]
+    obs = {'R_10_MAIN': e['R_10'], 'R_12_MAIN': e['R_12'],
+           'R_21_MAIN': e['R_21'], 'R_01_MAIN': e['R_01'],
+           'R_22_MAIN': e['R_22_MAIN']}
+    err = {'R_10_MAIN': e['R_10_err'], 'R_12_MAIN': e['R_12_err'],
+           'R_21_MAIN': e['R_21_err'], 'R_01_MAIN': e['R_01_err'],
+           'R_22_MAIN': e['R_22_MAIN_err']}
+    return obs, err
