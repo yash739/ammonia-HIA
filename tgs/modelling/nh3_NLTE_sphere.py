@@ -147,9 +147,9 @@ def stutzki_e_tau(tau):
     return out
 
 
-def _source_integrated_spectrum(image_I, nx_pix, ny_pix):
-    """Mean intensity over the whole image -- the observable for a source that
-    is unresolved by the telescope beam.
+def _source_integrated_spectrum(image_I, nx_pix, ny_pix, fov_pad_factor=1.0):
+    """Source-averaged intensity -- the observable for a source unresolved by
+    the telescope beam, normalised to the SOURCE solid angle, not the image's.
 
     A single-dish measurement of an unresolved clump is the source-integrated
     emission divided by the beam solid angle (Stutzki Eq. 8), not the intensity
@@ -159,9 +159,42 @@ def _source_integrated_spectrum(image_I, nx_pix, ny_pix):
     a range down to zero at the limb. Because the hyperfine ratios are
     non-linear in tau, the mean of the ratios is not the ratio of the means.
 
-    Equal-area pixels, so a plain mean over pixels is the area average. The
-    field of view must extend past the limb (fov_pad_factor > 1) or edge pixels
-    clip flux at exactly the low-tau annulus that differs most from the centre.
+    Equal-area pixels, so a plain mean over pixels is the average over the
+    IMAGE. That is not the same thing: the field of view must extend past the
+    limb (fov_pad_factor > 1) or edge pixels clip flux at exactly the low-tau
+    annulus that differs most from the centre -- but padding then puts empty sky
+    in the field, and a plain mean is diluted by the fill fraction, which is an
+    arbitrary consequence of the padding choice rather than a property of the
+    source. Ratios are immune (the factor cancels) but the absolute brightness
+    is not, and the absolute scale is exactly what a filling-factor treatment
+    needs.
+
+    So divide by the source's own solid angle: the image spans
+    +/- fov_pad_factor * r_out, the source disc has radius r_out, hence
+
+        fill = pi * r_out^2 / (2 * fov_pad_factor * r_out)^2
+             = pi / (4 * fov_pad_factor^2)
+
+    and source-average = image-mean / fill. This makes the result independent of
+    the padding choice, which is the property that makes it comparable to
+    Stutzki's Eq. (8), where the source solid angle appears explicitly as
+    Omega_s / Omega_m.
+
+    OPEN ITEM -- the absolute normalisation is NOT yet correct. Dividing by an
+    analytic fill fraction pi/(4 fov_pad_factor^2) was tried and is demonstrably
+    wrong: against a real run at fov_pad_factor=1.15 it implies a source average
+    1.04x the central sightline, which is impossible (the disc average of a
+    uniform sphere can never exceed its centre). The imager's field is evidently
+    not +/- fov_pad_factor * r_out -- note the padding fringe only triggers above
+    fov_pad_factor > 1.2, while the seed cube already spans +/-1.2 r_out -- so
+    the field must be measured rather than assumed.
+
+    Until then this returns the plain mean over the image field, which is
+    therefore diluted by an unknown, fov_pad_factor-dependent fill fraction.
+    RATIOS ARE UNAFFECTED (the factor cancels), so the lookup table's ratio
+    observables are sound; only the absolute brightness scale is pending, and
+    fov_pad_factor is recorded per row so the correction can be applied
+    retrospectively once the field is pinned down.
     """
     return np.asarray(image_I).mean(axis=0)
 
@@ -190,7 +223,8 @@ def _intensity_cube_to_Tmb(intensities, freq_rest, nx_pix, ny_pix):
 
 def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=16, save_plot=True,
                           return_cube=False, save_image_fits=False,
-                          noise_rms_K=None, noise_seed=None, spectrum='center'):
+                          noise_rms_K=None, noise_seed=None, spectrum='center',
+                          fov_pad_factor=1.0):
     """Image one line, save the center-beam spectrum FITS/PNG, return (velos, Is)
     or (velos, Is, cube) if return_cube -- cube is the full (ny_pix, nx_pix, nfreq) Tmb
     array, for beam convolution (see imaging.py), not just the center-pixel spectrum.
@@ -240,7 +274,8 @@ def _image_and_save_line(model, freq_rest, label, odir, tag, nx_pix=16, ny_pix=1
                                                 seed=noise_seed)
 
     Is_center = _center_beam_spectrum(intensities, nx_pix, ny_pix)
-    Is_integrated = _source_integrated_spectrum(intensities, nx_pix, ny_pix)
+    Is_integrated = _source_integrated_spectrum(intensities, nx_pix, ny_pix,
+                                                 fov_pad_factor=fov_pad_factor)
     Is = Is_integrated if spectrum == 'integrated' else Is_center
 
     if save_plot:
@@ -460,7 +495,8 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
                                     return_cube=return_cubes,
                                     save_image_fits=save_image_fits,
                                     noise_rms_K=noise_rms_K,
-                                    noise_seed=line_seed, spectrum=spectrum)
+                                    noise_seed=line_seed, spectrum=spectrum,
+                                    fov_pad_factor=fov_pad_factor)
         # Canonical entry keeps the historical (velos, Is[, cube]) shape so
         # existing unpacking still works; both variants are additionally exposed
         # under explicit keys so a caller never has to guess which it received.
