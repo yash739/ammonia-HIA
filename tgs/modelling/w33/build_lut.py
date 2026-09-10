@@ -17,15 +17,20 @@ Axes are the three the observables actually depend on. X_NH3 and radius_sphere
 are exactly degenerate (they enter only through N = 2 r n X), so they are one
 axis, not two.
 
-    log10 n_H2        3.5 -> 7.5   step 0.25 dex   17 points
-    T_k [K]            12 -> 48    step 3 K        13 points
-    log10 (N_NH3/dv)  14.0 -> 15.8 step 0.20 dex   10 points
+    log10 n_H2        3.5 -> 7.5   step 0.5 dex    9 points
+    T_k [K]           {12,18,24,30,36,48} (non-uniform)  6 points
+    log10 (N_NH3/dv)  14.0 -> 15.8 step 0.45 dex   5 points
 
-2210 models at the Delta_v = 0.3 km/s reference rung. These are essentially
-Stutzki & Winnewisser (1985)'s own tested extents plus a margin, and contain
-every Table 1a benchmark including OMC S1 at log n' = 7.576. The 3 K temperature
-step makes the grid land exactly on 18, 24, 30 and 36 K -- his Fig. 4 panel
-temperatures -- so that figure is directly reproducible.
+270 models at the Delta_v = 0.3 km/s reference rung -- a deliberately
+coarsened first pass (cut from the original 2210-model 17x13x10 grid; see
+git history) to get a validated table quickly. Still contains every Table 1a
+density/column benchmark to within the coarser spacing, and the T axis is
+non-uniform specifically to keep 18, 24, 30 and 36 K -- Stutzki's Fig. 4
+panel temperatures -- exactly on-grid despite the cut from 13 to 6 points.
+Once this coarse table is validated, a second, denser table offset from this
+one (interleaving points, e.g. log_n at the coarse grid's midpoints) is
+planned to fill in resolution where it turns out to matter, rather than
+paying the full fine-grid cost upfront.
 
 WHAT IS STORED, AND WHY SPECTRA
 -------------------------------
@@ -39,11 +44,15 @@ this grid size they would be hundreds of GB and nothing reads them back.
 
 PINNED NUMERICS
 ---------------
-nrays=48, resolution=10, max_NLTE=250, passed explicitly rather than left at a
+nrays=12, resolution=10, max_NLTE=250, passed explicitly rather than left at a
 signature default, and recorded in every row so the choice is auditable and a
 partial rebuild stays possible if the deferred higher-resolution comparison
 fails. max_NLTE is a time cap, not a convergence claim: rows that hit it are
-flagged rather than silently trusted.
+flagged rather than silently trusted. nrays=12 (not 48) was chosen after a
+direct measurement across four points spanning tau_main 0.005-1.7 found
+nrays=48 changes every ratio by <1.1% relative (and <0.2% within the grid's
+actual designed range) while being 3.6-4.25x slower -- see NRAYS's definition
+below for the full comparison.
 """
 
 import os
@@ -63,16 +72,37 @@ if _MODELLING not in sys.path:
 import params as p
 
 WDIR = "/home/yasho379/magritte_rebuilt/tgs/"
-DEFAULT_ODIR = "/home/yasho379/magritte_rebuilt/output_lut/"
+# New output dir for the coarse grid -- deliberately NOT output_lut/, which
+# holds 22 rows computed under the old nrays=48 setting. Reusing that dir
+# would let the resume-skip logic silently accept those stale-numerics rows
+# wherever a coarse-grid key happens to coincide (log_n and T are subsets of
+# the old axes, so several do).
+DEFAULT_ODIR = "/home/yasho379/magritte_rebuilt/output_lut_coarse/"
 
 # --- grid ------------------------------------------------------------------
-LOG_N_LO, LOG_N_HI, LOG_N_STEP = 3.5, 7.5, 0.25
-T_LO, T_HI, T_STEP = 12.0, 48.0, 3.0
-LOG_NDV_LO, LOG_NDV_HI, LOG_NDV_STEP = 14.0, 15.8, 0.20
+# Coarsened first-pass grid (2210 -> 270 models): 9 x 6 x 5. log_n and
+# log_ndv keep uniform steps at the wider spacing; T is a fixed, non-uniform
+# tuple below so it still lands exactly on Stutzki's Fig. 4 temperatures.
+LOG_N_LO, LOG_N_HI, LOG_N_STEP = 3.5, 7.5, 0.5
+LOG_NDV_LO, LOG_NDV_HI, LOG_NDV_STEP = 14.0, 15.8, 0.45
+# Endpoints (12, 48) match the original T range; interior four are exactly
+# Stutzki's Fig. 4 panel temperatures, preserved despite cutting 13 -> 6.
+T_VALUES = (12.0, 18.0, 24.0, 30.0, 36.0, 48.0)
 REFERENCE_DV_KMS = 0.3
 
 # --- pinned numerics -------------------------------------------------------
-NRAYS = 48
+# NRAYS reverted 48 -> 12: measured directly, not assumed. 4 sequential,
+# uncontended comparisons at nrays=48 vs 12 (spanning tau_main from 0.005 to
+# 1.7, the last one 16x past the grid's own designed log(N_NH3/dv) maximum)
+# all agree to <1.1% relative in every satellite/main ratio -- an order of
+# magnitude under the ~10% observational floor -- while nrays=12 is a
+# consistent 3.6-4.25x faster. At the grid's actual axis maximum
+# (log(N_NH3/dv)=15.8, tau_main~0.1) the two agree to <0.2%; the ~1% figure
+# only appears deliberately pushed far outside the grid's real range. See
+# the "nrays sensitivity" section of the report for the full comparison
+# table. This replaces the earlier "4x the original hardcoded 12" reasoning
+# (which pinned 48 by analogy to the resolution bump, not by measurement).
+NRAYS = 12
 # Reverted from 14 back to 10: at resolution=14, the exact point
 # (log n=7.3, T=27.8, log_Ndv=14.68) that converges cleanly in 219s at
 # resolution=10 instead froze at fraction_not_converged = 35.7488% across
@@ -115,7 +145,7 @@ HEADER = [
 
 def grid_axes():
     log_n = np.round(np.arange(LOG_N_LO, LOG_N_HI + 1e-9, LOG_N_STEP), 6)
-    T = np.round(np.arange(T_LO, T_HI + 1e-9, T_STEP), 6)
+    T = np.round(np.array(T_VALUES, dtype=float), 6)
     log_ndv = np.round(np.arange(LOG_NDV_LO, LOG_NDV_HI + 1e-9, LOG_NDV_STEP), 6)
     return log_n, T, log_ndv
 
@@ -129,10 +159,10 @@ PAPER1_TEMPERATURES = (18.0, 24.0, 30.0, 36.0)
 def grid_points(paper1_first=True):
     """Grid points, by default ordered so Paper I's Fig. 4 slice completes first.
 
-    That slice is 17 x 4 x 10 = 680 models, 31% of the table, so ordering it to
-    the front makes the figure available roughly a third of the way through the
-    build instead of at the end. The remaining temperatures fill in behind it
-    and block nothing. Resumption is by grid key, so the ordering is free.
+    That slice is 9 x 4 x 5 = 180 models, 2/3 of the coarse table, so ordering
+    it to the front makes the figure available well before the (now small)
+    remainder -- just T=12 and T=48 -- finishes. Resumption is by grid key,
+    so the ordering is free.
     """
     log_n, T, log_ndv = grid_axes()
     pts = [(float(a), float(b), float(c)) for a in log_n for b in T for c in log_ndv]
@@ -173,7 +203,7 @@ def _worker(task):
                 max_NLTE=MAX_NLTE, spectrum=SPECTRUM,
                 fov_pad_factor=FOV_PAD_FACTOR, _key=task['key'])
     try:
-        hi, conv, tau, extra = run_model(
+        hi, conv, tau, extra, npoints, nboundary = run_model(
             wdir=task['wdir'], odir=task['odir'], XNH3=task['XNH3'],
             numberdensity=task['numberdensity'], vturb=task['vturb'],
             T_cloud=task['T_cloud'], max_NLTE=MAX_NLTE,
@@ -209,7 +239,7 @@ def _worker(task):
             detected_21=bool(det21),
             tau_main=float(tau), halting_iter=int(hi), final_convergence=float(conv),
             convergence_ok=bool(conv >= CONV_THRESHOLD),
-            npoints=int(task.get('npoints', -1)), nboundary=int(task.get('nboundary', -1)),
+            npoints=int(npoints), nboundary=int(nboundary),
             wall_s=round(time.time() - t0, 1), Status='SUCCESS')
         return row, spectra
     except Exception as e:

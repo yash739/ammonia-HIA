@@ -82,7 +82,7 @@ def truth_forward_run():
     conv = run_model(wdir="/home/yasho379/magritte_rebuilt/tgs/", odir=ODIR, XNH3=X_FIDUCIAL,
                       numberdensity=n_H2, vturb=vturb, T_cloud=T_k, max_NLTE=MAX_NLTE,
                       radius_sphere=radius_sphere)
-    halting_iter, final_convergence, tau_main, extra_spectra = conv
+    halting_iter, final_convergence, tau_main, extra_spectra, npoints, nboundary = conv
     hfs = analyse_spectra(odir=ODIR, XNH3=X_FIDUCIAL, numberdensity=n_H2, vturb=vturb,
                            T_cloud=T_k, radius_sphere=radius_sphere, max_NLTE=MAX_NLTE,
                            save_plots=False)

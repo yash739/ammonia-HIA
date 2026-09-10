@@ -8,6 +8,7 @@ import pytest
 from stutzki_physics import (
     eta_f, jeans_length_pc, jeans_mass_Msun, max_clump_mass_Msun,
     clump_count_K, clump_count_required, physically_consistent,
+    eq11_thermal_ratio, EQ11_TAU_RATIO_OUTER, EQ11_TAU_RATIO_INNER,
 )
 
 
@@ -134,3 +135,35 @@ def test_clump_count_K_matches_table_2a_all_positions():
         diffs.append(np.log10(K) - d2a['log_K'])
     assert len(diffs) == 23
     assert max(abs(d) for d in diffs) < 0.001
+
+
+def test_eq11_thin_limit_matches_lte_intensity_ratio():
+    """As tau_main -> 0, e(tau) -> 1 - 2tau/3 so both lines are in the
+    optically thin regime and the ratio reduces to tau_sat/tau_main = r,
+    the LTE intensity ratio Fig. 1 gives directly."""
+    r_out = eq11_thermal_ratio(1e-7, component='outer')
+    r_in = eq11_thermal_ratio(1e-7, component='inner')
+    assert r_out == pytest.approx(EQ11_TAU_RATIO_OUTER, rel=1e-3)
+    assert r_in == pytest.approx(EQ11_TAU_RATIO_INNER, rel=1e-3)
+
+
+def test_eq11_saturates_to_unity_at_high_tau():
+    """At high tau_main both lines saturate to the same (equal T_ex)
+    brightness, so the ratio -> 1 -- the asymptote visible in Figs. 5/6."""
+    assert eq11_thermal_ratio(200.0, component='outer') == pytest.approx(1.0, abs=1e-3)
+    assert eq11_thermal_ratio(200.0, component='inner') == pytest.approx(1.0, abs=1e-3)
+
+
+def test_eq11_inner_exceeds_outer_at_fixed_tau():
+    """Inner satellites are intrinsically stronger in LTE (13.9% vs 11.1%),
+    so at any finite tau_main the inner reference curve sits above the
+    outer one -- exactly the ordering visible comparing Figs. 5 and 6."""
+    tau = np.array([0.1, 1.0, 5.0, 20.0])
+    assert np.all(eq11_thermal_ratio(tau, 'inner') >= eq11_thermal_ratio(tau, 'outer'))
+
+
+def test_eq11_monotonically_increasing_with_tau():
+    tau = np.logspace(-2, 2, 50)
+    for comp in ('outer', 'inner'):
+        y = eq11_thermal_ratio(tau, comp)
+        assert np.all(np.diff(y) > 0)

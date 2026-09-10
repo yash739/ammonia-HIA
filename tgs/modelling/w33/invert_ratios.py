@@ -323,7 +323,7 @@ def _invert_worker(task):
                           numberdensity=task['numberdensity'], vturb=task['vturb'],
                           T_cloud=task['T_cloud'], max_NLTE=task['max_NLTE'],
                           radius_sphere=task['radius_sphere'])
-        halting_iter, final_convergence, tau_main, extra_spectra = conv
+        halting_iter, final_convergence, tau_main, extra_spectra, npoints, nboundary = conv
         hfs = analyse_spectra(odir=task['odir'], XNH3=task['XNH3'],
                                numberdensity=task['numberdensity'], vturb=task['vturb'],
                                T_cloud=task['T_cloud'], radius_sphere=task['radius_sphere'],

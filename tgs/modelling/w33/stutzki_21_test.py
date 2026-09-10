@@ -79,7 +79,7 @@ def _worker(task):
 
     t0 = time.time()
     try:
-        hi, conv, tau, extra = run_model(
+        hi, conv, tau, extra, npoints, nboundary = run_model(
             wdir=WDIR, odir=ODIR, XNH3=XNH3_FIDUCIAL, numberdensity=n_H2,
             vturb=vturb, T_cloud=T_k, max_NLTE=MAX_NLTE,
             radius_sphere=radius_sphere,

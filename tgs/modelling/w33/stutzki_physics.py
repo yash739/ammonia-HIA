@@ -146,3 +146,43 @@ def physically_consistent(T_k, n_H2_cm3, T_B_obs, T_B_theor, dv_obs_kms, dv_clum
     detail = dict(eta_f=ef, K_predicted=K_pred, K_required=K_req,
                    eta_ok=bool(eta_ok), K_ok=bool(K_ok))
     return bool(eta_ok and K_ok), detail
+
+
+# LTE (no-anomaly) relative intensities of the (1,1) inversion satellites,
+# read directly off Fig. 1 of Stutzki & Winnewisser (1985): outer satellites
+# (F1=0->1, F1=1->0) 11.1% each, inner satellites (F1=1->2, F1=2->1) 13.9%
+# each, main line (delta F1=0) 50.0%. Ratios to the main line's intrinsic
+# strength give tau_satellite/tau_main under equal excitation temperature.
+EQ11_TAU_RATIO_OUTER = 0.111 / 0.500   # = 0.222
+EQ11_TAU_RATIO_INNER = 0.139 / 0.500   # = 0.278
+
+
+def eq11_thermal_ratio(tau_main, component='outer'):
+    """Stutzki & Winnewisser (1985) Eq. (11): the satellite/main brightness
+    ratio expected with NO anomaly (equal excitation temperature throughout
+    the hyperfine manifold), as a function of the main line's optical depth
+    alone -- the reference curve overplotted on Figs. 5 and 6.
+
+    Derivation: with a single T_ex for every component, Eq. (8)'s
+    T_B = T_ex[1 - e(2 tau)] (disc-averaged, Eq. 10 = `stutzki_e_tau`) applies
+    to both lines with tau_satellite = r * tau_main, r fixed by the LTE
+    intensity ratios above (independent of density/temperature -- this is
+    exactly why deviation from this curve is the anomaly signature). So
+
+        T_B,sat / T_B,main = [1 - e(2 r tau_main)] / [1 - e(2 tau_main)].
+
+    `component='outer'` (r=0.222) is the curve for Fig. 5 (F1=0->1 or
+    F1=1->0 vs the main line); `component='inner'` (r=0.278) is Fig. 6's
+    (the two inner satellites are equal to each other under LTE, so their
+    average obeys the same curve).
+    """
+    import os
+    import sys
+    _modelling_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _modelling_dir not in sys.path:
+        sys.path.insert(0, _modelling_dir)
+    from nh3_NLTE_sphere import stutzki_e_tau
+    r = {'outer': EQ11_TAU_RATIO_OUTER, 'inner': EQ11_TAU_RATIO_INNER}[component]
+    tau_main = np.asarray(tau_main, dtype=float)
+    tau_sat = r * tau_main
+    return (1.0 - stutzki_e_tau(2.0 * tau_sat)) / (1.0 - stutzki_e_tau(2.0 * tau_main))

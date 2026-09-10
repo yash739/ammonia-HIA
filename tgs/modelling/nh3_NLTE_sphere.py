@@ -559,7 +559,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     tau_main = tau_main_flat[120]
 
-    return info + (tau_main, extra_spectra)
+    return info + (tau_main, extra_spectra, npoints, nb_boundary)
 
 if __name__ == "__main__":
     run_model(wdir="./", odir="./", XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16)
