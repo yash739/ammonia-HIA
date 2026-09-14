@@ -27,10 +27,15 @@ from scipy.interpolate import LinearNDInterpolator
 
 DEFAULT_LUT = "/home/yasho379/magritte_rebuilt/production/output_lut_combined/results/lut_dv0.30.csv"
 
-AMPS = ('A_01', 'A_10', 'A_MAIN', 'A_21', 'A_12', 'A_MAIN_22')
+AMPS = ('A_01', 'A_10', 'A_MAIN', 'A_21', 'A_12', 'A_MAIN_22', 'A_MAIN_21')
 RATIO_KEYS = ('R_01_MAIN', 'R_10_MAIN', 'R_21_MAIN', 'R_12_MAIN', 'R_22_MAIN')
 _RATIO_NUM = {'R_01_MAIN': 'A_01', 'R_10_MAIN': 'A_10', 'R_21_MAIN': 'A_21',
               'R_12_MAIN': 'A_12', 'R_22_MAIN': 'A_MAIN_22'}
+# (2,1)/(1,1) ratio -- NOT in RATIO_KEYS/_RATIO_NUM (and so never enters
+# chi2_retrieve unless explicitly asked for): the whole point of storing it
+# is to predict it at a point retrieved from the other 5 ratios alone, as a
+# genuine held-out test (Stutzki's own Table 3 comparison), not to fit it.
+RATIO_21 = 'R_21_11'
 
 
 class LutInterpolator:
@@ -76,6 +81,7 @@ class LutInterpolator:
         amp = {a: 10.0 ** v for a, v in logamp.items()}
         out = {k: amp[_RATIO_NUM[k]] / amp['A_MAIN'] for k in RATIO_KEYS}
         out['A_MAIN'] = amp['A_MAIN']
+        out[RATIO_21] = amp['A_MAIN_21'] / amp['A_MAIN']
         return out
 
 
