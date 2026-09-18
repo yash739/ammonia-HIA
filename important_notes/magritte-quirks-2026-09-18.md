@@ -604,3 +604,36 @@ itself would fix — it says nothing about a defect baked into the mesh's
 resolution). The right check is an independent method that doesn't share
 the suspect assumption, which is exactly what the radial mesh comparison
 provided once it existed.
+
+---
+
+## 10. New reproducible figure: optical depth vs. chord length
+
+The 09-16 diagnostic behind §9 was numeric/prose only — no saved figure
+existed. Instructed to add it; rather than dig up a dead scratchpad
+session's script, wrote `w33/chord_experiment.py`, reusing the
+already-validated `lte_probe.py` (τ(b) from brightness inversion *and*
+independently from Magritte's own optical-depth image, both checked
+against the exact analytic chord law, which is exact at LTE for a
+uniform sphere). Ran fresh at a representative point (T=24K, log
+n=6.0, log N/Δv=15.0) — different from the original diagnostic's point,
+so this is an independent confirmation, not a re-plot.
+
+**Result, cube vs radial**: cube fits the chord law at 24.6% RMS and is
+visibly non-monotonic; limb/chord-law ratio 0.003 (essentially no flux
+recovered at the limb, vs radial's 0.786). Cube's fitted central τ
+(0.645) is ~0.84× the radial mesh's (0.766) — smaller than the original
+diagnostic's ~2× gap, but at a different, less optically-thick point;
+the raw (non-fitted) central pixel value tells the sharper story: cube
+reads ≈0.38 there, almost exactly half of radial's fitted central value,
+matching the original ~0.5 ratio. Radial mesh: 1.4% RMS, monotonic by
+construction. Both brightness-inversion and Magritte's-own-image τ
+extractions agree with each other to 3 decimal places on both meshes —
+the two independent extraction methods aren't where the disagreement is;
+the mesh is.
+
+Figure now embedded in `paper1_draft.tex` §4.2 (`fig:chord_experiment`,
+new — before the existing `fig:mesh_fig56` ratio-vs-tau consequence
+figure) and saved at
+`output_lut_gold/results/chord_experiment_cube_vs_radial.png`, force-added
+to git as the primary evidence figure for this finding.
