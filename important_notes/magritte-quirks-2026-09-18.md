@@ -637,3 +637,45 @@ new — before the existing `fig:mesh_fig56` ratio-vs-tau consequence
 figure) and saved at
 `output_lut_gold/results/chord_experiment_cube_vs_radial.png`, force-added
 to git as the primary evidence figure for this finding.
+
+---
+
+## 11. S106 (0,0)'s "reversal" was a branch-selection artefact, not a real anomaly
+
+§6.4 flagged S106 (0,0) as an open, unexplained exception: under
+full_original rates its raw χ²-best fit lands on the low-density branch
+and *under*-predicts the observed (2,1)/(1,1) ratio (0.0015 vs 0.0140),
+the only under-prediction anywhere in this exercise. Instructed to check
+what the high-density branch predicts there and compare both.
+
+New `stutzki85/s106_00_branch_comparison.py`: restricts the same χ²
+landscape to `log_n_H2 >= 6` and takes its minimum as the "high-density"
+local optimum, alongside the existing global (low-density) best. Result:
+
+| | low branch (global best χ²) | high branch (local min., log n≥6) |
+|---|---|---|
+| log n / T | 5.24 / 21.7 K | 6.17 / 21.7 K |
+| χ² | 2.042 | 2.144 (Δχ²=+0.10 — barely worse) |
+| η_f | 0.376 | 0.340 |
+| K predicted / required | 4.76 / 4.90 (fails, narrowly) | 36.4 / 4.90 (passes comfortably) |
+| `physically_consistent` | **NO** | **YES** |
+| predicted (2,1)/(1,1) | 0.0015 | **0.0131** |
+
+The two branches are essentially indistinguishable in the four ratios
+that actually enter the fit (their (1,1) spectra overlap almost exactly
+in the figure) — the χ² surface genuinely can't tell them apart, which is
+exactly the situation `physically_consistent` exists to resolve. Once it
+does: the preferred branch predicts (2,1)/(1,1)=0.0131, within 6% of the
+observed 0.0140 — closer than Stutzki's own 1985 theoretical value
+(0.018). **Not an anomaly** — the raw-χ²-best point was simply reading
+the held-out test from the wrong (unfiltered) branch. This is the second
+time in this project the consistency filter has done real
+degeneracy-breaking work on a specific, checkable case (the first being
+the general 23-position gold retrieval, §2.3), which is reassuring for
+the filter's design rather than merely a post-hoc rationalization.
+
+Rewrote the paper's §4.4 text, the Discussion paragraph, the Ongoing Work
+item, and the Summary sentence that all previously described this as an
+open/unresolved exception. Regenerated figure
+(`S106_0_0_branch_comparison.png`) shows both branches' spectra and
+held-out predictions side by side, replacing the single-branch figure.
