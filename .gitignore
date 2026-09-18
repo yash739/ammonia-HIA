@@ -11,3 +11,17 @@
 # Exception: curated observed-data CSVs (small, human-digitized, not bulk
 # generated output) should be tracked despite the blanket *.csv rule above.
 !tgs/modelling/w33/observed_data/*.csv
+!production/tgs/modelling/w33/observed_data/*.csv
+
+# Disposable scratch workspace (272G+ of one-off diagnostics/benchmarks) --
+# never meant to be tracked, see important_notes/ for what's worth keeping.
+/scratch/
+
+# Vendored dependency (911M), not project code -- editable-installed from
+# here, never committed.
+/Magritte/
+
+# Editor config, Python cache
+.vscode/
+__pycache__/
+*.pyc
