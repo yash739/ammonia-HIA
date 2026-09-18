@@ -1,6 +1,7 @@
 # Ignore PNG images
 *.png
 *.csv
+*.npz
 
 # Ignore HDF5 files
 *.h5
