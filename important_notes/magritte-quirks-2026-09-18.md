@@ -560,3 +560,47 @@ Loreau**, and **escape1d + the full transcribed original rates**
 hand-picked (1,1)-source-only subset) is retired from active comparison
 — its outputs stay on disk (`output_escape1d/results_original_rates/`,
 untouched) but won't be extended or referenced in new write-ups.
+
+---
+
+## 9. Paper draft correction: the Eq.11-departure claim was overclaimed
+
+The Overleaf draft's §4.2 (comparison against Stutzki's Eq.~11) had
+stated the 3D model's faster-than-Eq.11 saturation was "a genuine,
+resolution-converged property of the model geometry... not a numerical
+artifact," verified by checking insensitivity to angular quadrature,
+mesh resolution, and image sampling. That check cannot actually rule out
+a mesh-*type* artefact: the 09-16 cube-mesh defect (§1 of the
+09-16 notes — non-monotonic τ(b), ~half the correct central value, does
+not improve with resolution/nrays/pixels/pad) is, by construction,
+invisible to a robustness check performed entirely *within* the same
+cube topology. The user caught this independently and gutted the
+overclaiming paragraph in the draft directly (via Overleaf), leaving a
+placeholder figure — a new direct LTE comparison (cube vs radial mesh,
+reproducing Stutzki's own Figs. 5-6, 3 densities, T=18K) they had
+generated separately.
+
+Read literally, that figure is reassuring rather than damning: both mesh
+types show similar faster-than-Eq.11 saturation at low-to-moderate τ, so
+the qualitative result is *not* primarily a mesh artefact — both a
+geometrically correct and a geometrically defective mesh produce it. But
+the cube mesh's departure runs measurably ahead of the radial mesh's at
+the highest optical depths sampled (τ≳3, clearest in the (2,2)/(1,1)
+panel), so the cube-mesh production grid likely overstates the effect's
+*magnitude* somewhat at high τ, in a way this one LTE check doesn't fully
+quantify (doesn't extend past τ~9, and hasn't been checked under NLTE
+excitation at all). Rewrote §4.2 and the Summary to state precisely this
+— genuine effect, magnitude uncertain at high τ, radial-mesh re-run
+still needed to close it out — instead of either the original
+overclaim or an equal-and-opposite overcorrection to "it's just a mesh
+bug." Added an Ongoing Work item for the staged radial production grid
+(mesh economy study + platinum1/2/3, per the plan file) that would
+settle this properly.
+
+**Lesson**: a robustness check's scope is bounded by what it varies.
+"Insensitive to resolution" only rules out artefacts that resolution
+itself would fix — it says nothing about a defect baked into the mesh's
+*topology* (here: never sampling the sphere's surface at any
+resolution). The right check is an independent method that doesn't share
+the suspect assumption, which is exactly what the radial mesh comparison
+provided once it existed.
