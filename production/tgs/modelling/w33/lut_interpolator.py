@@ -25,7 +25,18 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import LinearNDInterpolator
 
-DEFAULT_LUT = "/home/yasho379/magritte_rebuilt/production/output_lut_combined/results/lut_dv0.30.csv"
+DEFAULT_LUT = "/home/yasho379/magritte_rebuilt/production/output_lut_gold/results/lut_dv0.30.csv"
+# Excludes the low-density/high-column corner where the implied clump radius
+# exceeds 0.5 pc (>>Stutzki's ~0.01 pc clumps): that corner is subcritically
+# thermalized against strong radiative pumping and shows non-convergent,
+# unphysical ratios (see important_notes/magritte-quirks-2026-09-16.md, 2.1).
+PC_CM = 3.0857e18
+DEFAULT_MAX_RADIUS_PC = None  # off by default -- pass max_radius_pc=0.5 to re-enable.
+# The corner it would exclude (log_n<=4.5, log_N_dv>=15.35) is genuinely
+# subcritically-thermalized and often unconverged, but the flag caller sets
+# is what actually gates data quality (convergence_ok == final_convergence>=90%,
+# see build_lut.CONV_THRESHOLD); the mask was an extra precaution on top of
+# that, not a substitute for it.
 
 AMPS = ('A_01', 'A_10', 'A_MAIN', 'A_21', 'A_12', 'A_MAIN_22', 'A_MAIN_21')
 RATIO_KEYS = ('R_01_MAIN', 'R_10_MAIN', 'R_21_MAIN', 'R_12_MAIN', 'R_22_MAIN')
@@ -46,10 +57,13 @@ class LutInterpolator:
     while an interior one now resolves between grid nodes.
     """
 
-    def __init__(self, lut_path=DEFAULT_LUT):
+    def __init__(self, lut_path=DEFAULT_LUT, max_radius_pc=DEFAULT_MAX_RADIUS_PC):
         df = pd.read_csv(lut_path)
         df = df[df['Status'] == 'SUCCESS']
-        df = df[df['convergence_ok']].reset_index(drop=True)
+        df = df[df['convergence_ok']]
+        if max_radius_pc:
+            df = df[df['radius_sphere'] <= max_radius_pc * PC_CM]
+        df = df.reset_index(drop=True)
         self.df = df
         self.X = df[['log_n_H2', 'T_cloud', 'log_N_dv']].values
         self._interps = {
