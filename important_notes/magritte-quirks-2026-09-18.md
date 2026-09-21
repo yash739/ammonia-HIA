@@ -771,3 +771,67 @@ substitution (27K) the earlier Fig. 5/6 scripts used. Launched in
 `screen -S lut_fig56`, same 3×4-worker convention as gold. This feeds the
 real Fig. 5/6 comparison (paper `sec:eq11`, Work item 3 of the 2-week
 plan) directly.
+
+---
+
+## 13. Work item 1 done: W33 retrieval suite, and a genuinely new headline result
+
+New `w33/retrieve_w33_full.py` (Magritte 3D, gold LUT) and
+`stutzki85/retrieve_w33_escape1d.py` (both escape1d rate sets), cloning
+the 23-position Stutzki retrieval machinery exactly — chi² landscape with
+branch structure, physical-consistency filter, held-out (2,1)/(1,1)
+prediction — but pointed at `w33_observed_ratios.observed_ratio_vector()`
+and gated by `quadrant_gate()`. Only W33_A and W33_B pass (quadrant II);
+Main1/A1/B1 correctly excluded (quadrant IV/I/I, kinematic signatures no
+static sphere can reach at any parameters) — matches the test suite's
+already-locked-in expectations (`test_w33_observed_ratios.py`).
+
+**Also re-ran the full existing interpolation-completeness suite
+(`plot_grid_completeness.py`, `plot_interpolation_completeness.py`,
+`plot_interpolation_axis_completeness.py`,
+`plot_interpolation_axis_curves.py`) and the 23-position Stutzki
+retrieval against the now-complete (1764/1764) gold grid**, and caught a
+real inconsistency in the process: `plot_interpolation_completeness.py`
+and `plot_interpolation_axis_completeness.py` still defaulted
+`mask_radius=True`, contradicting `lut_interpolator.py`'s established
+radius-mask-off policy (`plot_grid_completeness.py` already had it
+right). Fixed both defaults, re-ran. Final numbers, complete grid: median
+χ²=0.409 (down from 0.447 on the partial grid), 87.0% physically
+consistent (unchanged, 20/23), 8/23 pinned at the density ceiling (up
+from 7). Axis-completeness coverage improved substantially once the grid
+was fully built: log_n-axis full-coverage slices went from 42/126 to
+112/126.
+
+**The W33 result itself is the headline finding of this session.** All
+three independent methods agree closely with Tursun et al. (2022)'s real
+(2,1) detections — a sharp, striking contrast to the systematic
+3-5× over-prediction found throughout every one of the 23 Stutzki
+positions:
+
+| source | gold (3D) | escape1d Loreau | escape1d full_original | Tursun+22 observed |
+|---|---|---|---|---|
+| W33_A | 0.1062 | 0.1036 | 0.0959 | 0.0927 |
+| W33_B | 0.1097 | 0.1161 | 0.1208 | 0.1136 |
+
+Every prediction lands within ~3-15% of the real observation, with no
+systematic direction of offset across methods (gold and escape1d
+straddle the observation at both sources, not both high or both low).
+Both sources retrieve at the grid's density ceiling (log n=7.5 gold,
+7.27-7.5 escape1d) across all three methods, and both are
+`physically_consistent` (η_f 0.20-0.38, comfortably ≤1) in all three.
+This is a genuinely different outcome from the Stutzki positions, not
+just a smaller discrepancy — worth headline treatment in the paper's W33
+section, not folded into the same "reproduces the over-prediction"
+narrative as the rest of the paper.
+
+**Open question, not yet investigated**: why does W33 show good (2,1)
+agreement while the Stutzki positions systematically over-predict? Both
+use the same retrieval methodology, the same rate sets, the same
+held-out-(2,1) logic. Plausible candidates worth checking before writing
+this up as a real physical difference rather than a coincidence: W33's
+observed linewidths (2.2-3.4 km/s, per L5 in the master plan) are much
+larger than Stutzki's typical values, so the retrieved `log_N_dv` sits in
+a different part of the grid; W33's distance (2.4 kpc) and calibration
+differ from the mixed literature sources in Stutzki's own table; or this
+could be a smaller, more homogeneous 2-source sample simply landing
+favourably by chance. Flagged here rather than asserted as resolved.
