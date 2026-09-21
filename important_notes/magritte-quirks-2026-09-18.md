@@ -679,3 +679,95 @@ item, and the Summary sentence that all previously described this as an
 open/unresolved exception. Regenerated figure
 (`S106_0_0_branch_comparison.png`) shows both branches' spectra and
 held-out predictions side by side, replacing the single-branch figure.
+
+---
+
+## 12. `tau_main` fix landed — and a second, more serious bug found alongside it (09-21)
+
+Gold's remaining 191 rows were restarted (screen `lut_gold`, 3 processes
+× `OMP_NUM_THREADS=4`) and finished cleanly: 1764/1764 rows, 1741
+`SUCCESS+convergence_ok` (23 rows succeeded but didn't cross the 90%
+threshold within `max_NLTE=250` — expected for the coldest/densest
+corner, already handled via the `convergence_ok` flag, not a build
+failure). One real hiccup along the way: the first launch attempt used
+`--processes 14` with `OMP_NUM_THREADS=1` before being corrected to the
+established `3 processes × OMP_NUM_THREADS=4` convention; `pkill -f
+"build_lut_gold.py"` only matched the parent driver (whose cmdline
+contains that string) and missed its 14 already-spawned multiprocessing
+worker children (re-exec'd as `python3 -c "...spawn_main..."`, no longer
+matching the pattern) — 10 of them were found still running 22 minutes
+later, orphaned, burning ~7 extra cores. Killed by PID once identified.
+No data-corruption risk despite the brief overlap: `build_lut.build()`
+writes to the CSV only in the parent process's `pool.imap_unordered`
+consumer loop, so orphaned workers (parent already dead) had nowhere to
+send results even before being killed.
+
+### 12.1 `tau_main` fix — confirmed and landed
+
+Exactly the bug described in §1: `nh3_NLTE_sphere.py`'s final
+`compute_image_optical_depth_new(0,16,16)` call (used to compute
+`tau_main`) has no frequency argument, so it reports tau on whatever
+spectral window `compute_spectral_discretisation` last set — the last
+-imaged line in the `image_lines` loop (for gold, `(2,1)`, since
+`build_lut.py:211` adds it after the core `(1,1)`/`(2,2)` extraction).
+Fix: explicitly recompute `compute_spectral_discretisation` for `(1,1)`'s
+own frequency immediately before that final call. Verified two ways: (1)
+a causal order-swap test — same physics, `image_lines={'21':...}` vs
+`image_lines=None` — now gives *bit-identical* `tau_main`
+(8.108318207384606 both times; before the fix these would have differed,
+reflecting (2,1)'s vs (2,2)'s own tau respectively); (2) cross-checked
+against an independently-imaged `(1,1)`-only tau at the same pixel — also
+bit-identical, confirming the fixed value is genuinely correct, not just
+self-consistent.
+
+### 12.2 New finding: saved `.hdf5` model files never contained converged populations
+
+While implementing the "cheap patch" half of the plan (re-image the 2967
+already-saved model files to fix `tau_main` for the 1764 completed gold
+rows without re-solving NLTE), discovered `model.write(model_file)`
+(`nh3_NLTE_sphere.py:513`) runs **before** the solve
+(`compute_level_populations_sparse` at line 539) and is never called
+again afterward. Every model file ever saved by this pipeline therefore
+only contains the pre-solve setup (geometry/chemistry/mesh) — never the
+converged level populations. Confirmed directly, twice, on unrelated
+rows: `np.array(model.lines.lineProducingSpecies[0].population).sum()`
+reads back as exactly `0.0` in both cases (also checked `population_tot`,
+`populations` (plural, empty list), `population_prev1` — all zero/empty).
+Re-imaging from a freshly-loaded saved file gives physically meaningless
+values (~5e-11 instead of a real O(0.01-few) tau).
+
+**Consequence**: the "cheap patch, not a re-run" plan for the 1764
+already-completed gold rows is not viable at all — there is no way to
+recover a correct `tau_main` for them without a full NLTE re-solve
+(~373+ core-hours). Checked whether the stored per-row `.npz` spectra
+(`output_lut_gold/spectra/*.npz`) could substitute instead: they only
+hold reduced 500-channel disc-integrated spectra (`'11'`, `'22'`, `'21'`,
+`'velos'`), not per-pixel images, so they can't reconstruct the
+central-pixel quantity `tau_main` is actually defined as (distinct from
+the disc-integrated brightness already stored correctly as `A_MAIN`).
+
+**Decision (instructed)**: leave gold's existing 1764 rows' `tau_main`
+as-is — known wrong, documented here and in the paper, not patched. Fix
+the code for all future runs (done, §12.1 above). Additionally, fixed
+the root cause of the "no cheap patch possible" problem going forward:
+added a second `model.write(model_file)` call right after the solve
+completes, so every *future* saved model file will contain its converged
+populations and be cheaply re-imageable if ever needed again. Verified:
+reloaded population sum after this fix is genuinely nonzero
+(2,579,999.999999998, not 0.0).
+
+### 12.3 New small grid at Stutzki's own Fig. 5/6 parameters
+
+Rather than trying to salvage gold's `tau_main`, or wait for a full
+re-run, built a dedicated small grid (`w33/build_lut_fig56.py`) at
+Stutzki's exact Fig. 5/6 values — `T_k` ∈ {18, 26, 36} K, `n'_H2` ∈
+{10^3.5, 10^5.0, 10^7.0} cm⁻³ (from `grid.py:29-32`'s already-recorded
+parameters), full 9-point `log_N_dv` sweep matching gold's own axis — 81
+models, `output_lut_fig56/`. Built with both §12.1/§12.2 fixes already in
+place, so every row here has a genuinely correct `tau_main` from the
+start. Also reaches `T=26K` exactly, which gold's own `T_AXIS` (9,12,...,48
+in steps of 3) skips entirely — no more need for the ~4% offset
+substitution (27K) the earlier Fig. 5/6 scripts used. Launched in
+`screen -S lut_fig56`, same 3×4-worker convention as gold. This feeds the
+real Fig. 5/6 comparison (paper `sec:eq11`, Work item 3 of the 2-week
+plan) directly.
