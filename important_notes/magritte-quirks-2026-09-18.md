@@ -852,3 +852,144 @@ robust to which collisional rates are used, not an artefact of picking
 one particular table. This narrows, but doesn't fully answer, §13's open
 question: whatever is different about W33 vs the Stutzki positions, it
 isn't simply "one rate set happens to work better for W33."
+
+## 14. Density ceiling extended one decade (log n up to 8.5): the pins are real, not censored (09-21)
+
+Both escape1d fine grids (loreau, full_original) extended from log n<=7.5
+to log n<=8.5 via new `stutzki85/extend_grid_decade.py`, which reuses the
+existing 3.5-7.5 rows unchanged and only solves the new 7.5-8.5 slice
+(18 points x 50 T x 36 log_Ndv = 32400/rate set, ~160s each) rather than
+recomputing the full 126000-point grid. Retrieval re-run against both
+extended grids for all 23 Stutzki positions and both fittable W33 sources.
+
+**Result: W33_A and W33_B are bit-identical** (log_n, T, chi2 all
+unchanged to the last printed digit) under both rate sets, despite having
+a full extra decade of headroom. The log_n=7.5 pin at W33_A (loreau) is
+confirmed a genuine chi^2 optimum, not the grid ceiling censoring the
+answer. Among the 23 Stutzki positions, most don't move either (17/23
+loreau, 21/23 full_original unchanged); the one real mover is **OMC S1**,
+already the single worst-fit position in the table (chi2 was 23.8/18.9),
+which moves 7.50->7.85 (loreau) / 7.50->7.74 (full_original) and its chi2
+improves substantially (23.8->17.2, 18.9->16.1) — it genuinely wanted the
+room the old ceiling denied it, though it remains by far the worst fit
+even after moving (next-worst position is chi2~7).
+
+Practical upshot: the "grid ceiling might be masking the true density"
+caveat can be sharpened rather than just flagged — for W33 and the great
+majority of Stutzki positions, log n~7.3-7.5 is confirmed a real optimum.
+Only OMC S1's reported density needs correcting upward next time that
+table is touched. This is escape1d evidence only (1D method); it has not
+been re-tested on the Magritte gold LUT's own `LOG_N_AXIS`, which would
+need new Magritte compute.
+
+## 15. Real Fig. 5/6 comparison: escape1d (both rate sets) vs Magritte, at Stutzki's exact parameters (09-21)
+
+New `stutzki85/run_fig5_6_grid.py` (--rates {loreau,full_original,both})
+runs the escape1d model at Stutzki's own exact Fig. 5/6 parameters (T_k in
+{18,26,36}K, n' in {10^3.5,10^5.0,10^7.0}, N_NH3 over his own
+10^13.7-10^15.1 cm^-2 range) — no digitization needed, since this is a
+faithful reimplementation of his method run at his own numbers. New
+`w33/compare_fig5_6_direct.py` plots this against the fresh Magritte
+`output_lut_fig56/` grid (same fix-corrected tau_main) and the Eq.(11)
+no-anomaly floor, 4 curves x 9 (T,n) panels x 3 observables (outer 0->1,
+outer 1->0, averaged inner), with per-panel quantitative residuals
+(median/max |ratio diff|, escape1d interpolated onto Magritte's sparser
+tau_main grid in log-tau space).
+
+**Headline results:**
+- The **inner satellites are essentially insensitive to rate choice** —
+  Loreau and full_original escape1d curves overlap almost everywhere,
+  both tracking Magritte closely (median |residual| 0.007-0.08 across all
+  9 panels). Both radiative-transfer methods and both rate sets agree on
+  this observable.
+- The **outer satellites are not** — Loreau rates predict a much
+  *stronger* outer 0->1 enhancement / 1->0 suppression than full_original
+  at low-to-moderate density (n'=10^3.5-10^5), with the Loreau branch
+  entering the masing regime far more readily (641/720 vs 493/720 maser
+  points across the full sweep) and its ratio running off past the y-axis
+  in several panels (max |residual| reaching ~1e6 at T=36K/n'=10^5, a
+  genuine masing divergence under `guard_masers=False`'s literal Eq.(10)
+  continuation, not a bug).
+- **Non-obvious finding**: Magritte — despite using Loreau rates
+  internally — tracks noticeably *closer* to escape1d+full_original
+  (Stutzki's own rates) than to escape1d+Loreau, for the outer satellites
+  specifically, away from the high-density limit. All four curves
+  converge at the highest density panel (n'=10^7). This says the outer-
+  satellite anomaly *amplitude* is more sensitive to the radiative-
+  transfer *method* (1D escape-probability vs full 3D NLTE) than to the
+  collision rates, in this regime — a genuinely new, non-trivial result,
+  not predictable from either the rates-comparison (§13 follow-up, same
+  method both times) or the method-comparison (elsewhere in the paper,
+  same rates both times) alone.
+
+Caveat carried over from `reproduce_stutzki_fig5_6.py`: the n'=10^3.5
+panels imply clump radii >0.15pc rising to ~10pc at the highest column
+point (Magritte's own convergence gate excludes that one row) — well
+outside Stutzki's ~0.01pc clump picture. Not radius-masked here (unlike
+the general-grid script) because the point of this comparison is the
+radiative-transfer/rates treatments at identical (T,n,N/dv), not physical
+plausibility of the implied geometry.
+
+## 16. Work item -1 done: mesh economy — a genuine partial win, doesn't clear the adoption bar (09-21)
+
+**Step 1, region-split RMS.** Re-ran the cube-mesh chord-law measurement
+(same reference point as `chord_experiment.py`: T=24K, log n=6.0,
+log(N/dv)=15.0) with a bin edge added at b/R=0.4. **Contradicts the
+working hypothesis**: the *outer* region (b>=0.4) has WORSE RMS (42.3%)
+than the *core* (b<0.4, 29.5%) — core/outer ratio 0.70x. The cube mesh's
+own point inventory (09-16 notes §2.2b) already showed why: at pad=1.0 it
+has no interior point between 0.01R-0.40R *or* between 0.87R-R — the limb
+gap is as real a defect as the core gap, and this measurement shows it's
+actually the larger contributor to the overall 23.9% RMS.
+
+**Step 2/3, hybrid mesh.** Implemented `mesh={'kind':'hybrid', ...}` in
+`nh3_NLTE_sphere.build_point_cloud` (`_hybrid_point_cloud`): radial-shell
+seeding for r<=core_radius_frac*R (matching `_radial_point_cloud`'s own
+r^2-proportional density convention, no remesher pass — remeshing would
+collapse the structure right back down), the ordinary density-remeshed
+cube seed in the middle band, and an OPTIONAL second radial-shell band
+for r>=surface_frac*R. First tried core-only (`core_radius_frac=0.4`):
+fixed monotonicity but only brought RMS to 17.2% (n=392) — consistent
+with step 1's finding that the core is the smaller half of the problem.
+Adding the surface band (`surface_frac=0.85`) closed the rest of the
+gap: **RMS=1.3%, monotonic, limb/law=0.702** (n=814) — matching or
+beating the pure radial mesh's own 1.4%/0.786 (n=1313), at 62% of its
+point count. `surface_frac=0.80` (n=976) does marginally better on limb
+(0.787) at slightly more points. Figure:
+`output_lut_gold/results/mesh_economy_hybrid_validation.png`.
+
+**Step 4, the real test — NLTE cost at the same point (max_NLTE=250,
+`mesh_economy_nlte_cost.py`):**
+
+| mesh | npoints | wall_s | vs cube | convergence |
+|---|---|---|---|---|
+| cube | 269 | 91.5 | 1.00x | 100.00% |
+| hybrid (core0.4+surf0.85) | 814 | 675.6 | 7.38x | 100.00% |
+| radial | 1313 | 1175.8 | 12.85x | 99.62% |
+
+Radial's 12.85x here closely reproduces the 09-16 notes' independently-
+measured 13.4x at a different point — good cross-validation that this
+isn't point-specific noise. The hybrid genuinely *is* cheaper than full
+radial (1.74x faster, 675.6s vs 1175.8s) for equivalent chord-law
+accuracy, at 62% of the points — so point count does explain *some* of
+the cost difference. But going from cube (0 radial-shell structure) to
+hybrid (radial shells in core+surface, 3.03x the points) already costs
+7.38x — a per-point cost 2.4x higher than cube's own rate — showing the
+radial-shell geometry itself (small/jittered cells near the origin and
+near the surface, not just raw point count) carries a real, disproportionate
+NLTE-convergence penalty. Both explanations from the open question in the
+09-16 notes (§3.1: "point count, or small cells near the centre?") turn
+out to be partially right.
+
+**Decision, against the plan's own pre-committed gate** ("adopt for item
+2b if RMS comparable to radial AND cost much closer to cube's than
+radial's, e.g. under ~3x rather than 13x"): the hybrid mesh **passes
+accuracy** (1.3% RMS, matching/beating radial) but **fails cost** (7.38x
+sits much closer to radial's 12.85x than to cube's 1x, not under the
+~3x bar). **Not adopted for Work item 2b** — the Δv=0.5/0.8 spot-check
+proceeds on the existing cube mesh, carrying the same caveats already
+written into the paper's §4.2. The hybrid mesh remains implemented and
+available: if a future work item specifically needs radial-grade
+accuracy, the hybrid is strictly better than pure radial (same accuracy
+at 7.38x cube instead of 12.85x, a real 1.74x saving) — it just isn't
+cheap enough relative to cube to replace it as the default.

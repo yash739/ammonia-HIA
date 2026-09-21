@@ -345,6 +345,61 @@ def _radial_point_cloud(r_boundary, n_shell=14, base=260, seed=7):
     return np.vstack(pts), 0
 
 
+def _hybrid_point_cloud(r_boundary, resolution, core_radius_frac=0.4, n_shell_core=6,
+                         base_core=260, surface_frac=None, n_shell_surface=4, base_surface=260,
+                         exterior_density_fraction=EXTERIOR_DENSITY_FRACTION, seed=7):
+    """Radial-shell seed for r <= core_radius_frac*r_out (the region the cube
+    mesh structurally cannot populate: a box entirely inside a flat-density
+    region collapses to a single point at its centroid under the density
+    remesher, so the cube's interior stays essentially empty out to ~0.4R
+    regardless of `resolution`) -- optionally ALSO a radial-shell seed for
+    r >= surface_frac*r_out (the near-surface band, 09-21 mesh-economy
+    investigation: region-split RMS showed the cube's outer/limb region,
+    where it also has no interior points between ~0.87R and R, is actually
+    the LARGER contributor to the overall chord-law RMS, not the core --
+    so a core-only hybrid fixes monotonicity but not the dominant error).
+    The middle band keeps the ordinary density-remeshed cube seed, so the
+    well-populated part of the sphere stays as cheap as the pure cube path.
+
+    No remesher pass on either radial band (same reasoning as the pure
+    radial mesh: remeshing a locally near-uniform-density set of points
+    would collapse the radial structure right back to a single point).
+    """
+    rng = np.random.default_rng(seed)
+    core_pts = [np.zeros((1, 3))]
+    for rad in np.linspace(core_radius_frac / n_shell_core, core_radius_frac, n_shell_core):
+        n_pts = max(int(base_core * (rad / 1.0) ** 2), 12)
+        sph = _fibonacci_sphere(n_pts) * rad
+        core_pts.append(sph * (1.0 + 0.004 * rng.standard_normal((len(sph), 1))))
+    core_cloud = np.vstack(core_pts)
+
+    surface_cloud = np.zeros((0, 3))
+    r_mid_hi = 1.0
+    if surface_frac is not None:
+        for rad in np.linspace(surface_frac, 0.999, n_shell_surface):
+            n_pts = max(int(base_surface * rad ** 2), 12)
+            sph = _fibonacci_sphere(n_pts) * rad
+            surface_cloud = np.vstack([surface_cloud,
+                                        sph * (1.0 + 0.004 * rng.standard_normal((len(sph), 1)))])
+        r_mid_hi = surface_frac
+
+    xs = np.linspace(-1.2, 1.2, resolution, endpoint=True)
+    Xs, Ys, Zs = np.meshgrid(xs, xs, xs)
+    position = np.column_stack((Xs.ravel(), Ys.ravel(), Zs.ravel()))
+    r_dist = np.linalg.norm(position, axis=1)
+    # exclude the core always; exclude [surface_frac, 1.0) only -- the
+    # exterior fringe (r>=1.0, out to 1.2) is kept regardless of surface_frac
+    keep = (r_dist > core_radius_frac) & ((r_dist < r_mid_hi) | (r_dist >= 1.0))
+    position = position[keep]
+
+    r_dist = np.linalg.norm(position, axis=1)
+    rhos_ravel = np.where(r_dist > 1.0, exterior_density_fraction, 1.0)
+    outer_cloud, _ = mesher.remesh_point_cloud(
+        position, rhos_ravel, max_depth=5, threshold=2e-1, hullorder=3)
+
+    return np.vstack([core_cloud, surface_cloud, outer_cloud]), 0
+
+
 def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor=1.0,
                        exterior_density_fraction=EXTERIOR_DENSITY_FRACTION, mesh=None):
     """Build the Delaunay point cloud for one sphere.
@@ -373,6 +428,20 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
         positions_reduced, nb_boundary = _radial_point_cloud(
             r_boundary, n_shell=mesh.get('n_shell', 14), base=mesh.get('base', 260),
             seed=mesh.get('seed', 7))
+        origin = np.array([0.0, 0.0, 0.0]).T
+        positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_inner_boundary(
+            positions_reduced, nb_boundary, 0.01 * r_out, healpy_order=3, origin=origin)
+        positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_outer_boundary(
+            positions_reduced, nb_boundary, r_boundary, healpy_order=3, origin=origin)
+        return positions_reduced * scale, nb_boundary
+
+    if mesh is not None and mesh.get('kind') == 'hybrid':
+        positions_reduced, nb_boundary = _hybrid_point_cloud(
+            r_boundary, resolution, core_radius_frac=mesh.get('core_radius_frac', 0.4),
+            n_shell_core=mesh.get('n_shell_core', 6), base_core=mesh.get('base_core', 260),
+            surface_frac=mesh.get('surface_frac'), n_shell_surface=mesh.get('n_shell_surface', 4),
+            base_surface=mesh.get('base_surface', 260),
+            exterior_density_fraction=exterior_density_fraction, seed=mesh.get('seed', 7))
         origin = np.array([0.0, 0.0, 0.0]).T
         positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_inner_boundary(
             positions_reduced, nb_boundary, 0.01 * r_out, healpy_order=3, origin=origin)
@@ -424,10 +493,15 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
 
 def mesh_tag(mesh):
     """Model-file suffix. Empty for the default cube so existing model files keep
-    their names; otherwise distinct, so a radial and a cube run at identical
+    their names; otherwise distinct, so a radial/hybrid and a cube run at identical
     physics never write the same .hdf5 in the shared model_files/ directory."""
     if mesh is None or mesh.get('kind', 'cube') == 'cube':
         return ''
+    if mesh['kind'] == 'hybrid':
+        return (f"_hybrid{mesh.get('core_radius_frac', 0.4)}"
+                f"_{mesh.get('n_shell_core', 6)}x{mesh.get('base_core', 260)}"
+                f"sf{mesh.get('surface_frac', 'none')}"
+                f"s{mesh.get('seed', 7)}")
     return f"_{mesh['kind']}{mesh.get('n_shell', 14)}x{mesh.get('base', 260)}s{mesh.get('seed', 7)}"
 
 
