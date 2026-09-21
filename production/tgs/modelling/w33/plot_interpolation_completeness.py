@@ -26,7 +26,11 @@ RATIOS = [('R_01_MAIN', 'A_01'), ('R_10_MAIN', 'A_10'),
 PASS_TOL_PCT = 3.3  # 1/3 of the ~10% observational ratio uncertainty floor
 
 
-def load(path, mask_radius=True):
+def load(path, mask_radius=False):
+    # mask_radius off by default -- matches lut_interpolator.py's
+    # DEFAULT_MAX_RADIUS_PC=None policy (convergence_ok is the real
+    # data-quality gate; the radius mask was an extra precaution, not a
+    # substitute). Pass mask_radius=True to re-enable it.
     df = pd.read_csv(path)
     df = df[df['Status'] == 'SUCCESS']
     df = df[df['convergence_ok']]
@@ -84,7 +88,7 @@ def main():
     a = ap.parse_args()
 
     df = load(a.lut)
-    print(f"{len(df)} converged rows (radius-masked)")
+    print(f"{len(df)} converged rows (radius mask: off)")
     res, n_interior = hold_one_out(df, subsample=a.subsample)
     print(f"{n_interior} interior points tested, {len(res)} scored successfully")
     os.makedirs(os.path.dirname(a.csv_out), exist_ok=True)
@@ -114,7 +118,7 @@ def main():
         ax2.set_title('where it fails (log_n vs T, all log_Ndv overplotted)', fontsize=8)
 
     plt.suptitle(f"Gold LUT interpolation completeness -- hold-one-out, "
-                 f"{n_interior} interior points ({len(df)} total converged rows, radius-masked)\n"
+                 f"{n_interior} interior points ({len(df)} total converged rows)\n"
                  f"Dashed line = {PASS_TOL_PCT}% pass threshold (1/3 of ~10% observational floor)",
                  fontsize=12)
     plt.tight_layout(rect=(0, 0, 1, 0.93))

@@ -104,7 +104,7 @@ def main():
     a = ap.parse_args()
 
     df = load(a.lut)
-    print(f"{len(df)} converged rows (radius-masked)")
+    print(f"{len(df)} converged rows (radius mask: off)")
 
     T_slices = pick_best_slices(df, 'T_cloud', T_AXIS, ['log_n_H2', 'log_N_dv'], n=4)
     print('T-axis slices chosen (log_n_H2, log_N_dv):', T_slices)

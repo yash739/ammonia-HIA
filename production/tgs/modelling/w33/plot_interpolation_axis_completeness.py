@@ -32,7 +32,11 @@ RATIOS = [('R_01_MAIN', 'A_01'), ('R_10_MAIN', 'A_10'),
 PASS_TOL_PCT = 3.3
 
 
-def load(path, mask_radius=True):
+def load(path, mask_radius=False):
+    # mask_radius off by default -- matches lut_interpolator.py's
+    # DEFAULT_MAX_RADIUS_PC=None policy (convergence_ok is the real
+    # data-quality gate; the radius mask was an extra precaution, not a
+    # substitute). Pass mask_radius=True to re-enable it.
     df = pd.read_csv(path)
     df = df[df['Status'] == 'SUCCESS']
     df = df[df['convergence_ok']]
@@ -113,7 +117,7 @@ def main():
     a = ap.parse_args()
 
     df = load(a.lut)
-    print(f"{len(df)} converged rows (radius-masked)")
+    print(f"{len(df)} converged rows (radius mask: off)")
 
     n_full, n_tot = coverage_stats(df, 'T_cloud', np.array(T_AXIS), ['log_n_H2', 'log_N_dv'])
     print(f"log_n x log_Ndv slices with FULL T coverage (all 14): {n_full}/{n_tot}")
