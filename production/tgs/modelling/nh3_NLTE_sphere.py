@@ -537,7 +537,25 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.compute_inverse_line_widths()
     model.compute_LTE_level_populations()
     info = model.compute_level_populations_sparse(True, max_NLTE)
-    
+
+    # BUGFIX (2026-09): the earlier model.write(model_file) call (above) runs
+    # BEFORE this solve, so every previously-saved .hdf5 only ever captured
+    # the pre-solve setup (geometry/chemistry/mesh) -- level populations were
+    # never persisted, making saved model files useless for any cheap
+    # post-hoc re-imaging (confirmed directly: population arrays read back
+    # from saved files sum to exactly 0.0). Write again now that the
+    # converged (or max_NLTE-capped) populations exist, so future re-imaging
+    # of a saved model is possible without re-solving from scratch.
+    for attempt in range(1, max_write_attempts + 1):
+        try:
+            model.write(model_file)
+            break
+        except Exception as e:
+            if attempt < max_write_attempts:
+                time.sleep(2)
+            else:
+                print(f"WARNING: failed to write converged populations back to {model_file}: {e}")
+
     # -----------------------------
     # (1,1) and (2,2) processing -- filenames/behaviour unchanged from before the refactor
     # -----------------------------
@@ -594,10 +612,19 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
 
     #tau estimate
     # # Apply Beams
-    # default_bmaj_deg = default_bmin_deg = 0.00027778 * 2      
+    # default_bmaj_deg = default_bmin_deg = 0.00027778 * 2
     # add_carta_beams_to_fits(img1_fits, default_bmaj_deg, default_bmin_deg, 0.0, overwrite=True)
     # add_carta_beams_to_fits(img2_fits, default_bmaj_deg, default_bmin_deg, 0.0, overwrite=True)
 
+    # BUGFIX (2026-09): compute_image_optical_depth_new has no frequency
+    # argument -- it reports tau on whatever spectral window
+    # compute_spectral_discretisation last set, which after the all_lines
+    # loop above is whichever line was imaged LAST (e.g. (2,1) for gold,
+    # since image_lines adds it after '11'/'22'), not necessarily (1,1).
+    # tau_main below is documented and used everywhere downstream as the
+    # (1,1) main-line optical depth, so explicitly re-point the spectral
+    # discretisation at (1,1) here, regardless of imaging order above.
+    model.compute_spectral_discretisation(fcen_1 - 3000000.00, fcen_1 + 3000000.00, 500)
     model.compute_image_optical_depth_new(0, 16, 16)
 
     # Extract latest optical depth image
