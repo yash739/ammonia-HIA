@@ -800,7 +800,9 @@ right). Fixed both defaults, re-ran. Final numbers, complete grid: median
 consistent (unchanged, 20/23), 8/23 pinned at the density ceiling (up
 from 7). Axis-completeness coverage improved substantially once the grid
 was fully built: log_n-axis full-coverage slices went from 42/126 to
-112/126.
+112/126. Pooled 3D hold-one-out: 1006 interior points (up from 807),
+medians 1.4-2.1%, pass rates 82-99% — consistent with the earlier
+partial-grid numbers.
 
 **The W33 result itself is the headline finding of this session.** All
 three independent methods agree closely with Tursun et al. (2022)'s real
