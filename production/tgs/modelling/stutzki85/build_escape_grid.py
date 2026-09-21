@@ -126,16 +126,27 @@ def main():
     ap.add_argument('--n-T', type=int, default=50)
     ap.add_argument('--n-log-ndv', type=int, default=36)
     ap.add_argument('--rates', choices=['loreau', 'original', 'full_original'], default='loreau')
+    ap.add_argument('--log-n-max', type=float, default=None,
+                    help="override the fine grid's upper log10(n_H2) bound (default: gold's "
+                         "own ceiling, max(LOG_N_AXIS)=7.5). Writes to a separate "
+                         "'grid_fine_ext<max>.csv' file so the standard grid_fine.csv is left "
+                         "untouched -- extending the ceiling is an experiment, not a replacement.")
     a = ap.parse_args()
 
-    out_csv = out_csv_for(a.rates, fine=a.fine)
     cmat_fn = RATES_FN[a.rates]
     if a.fine:
-        log_n_vals = np.linspace(min(LOG_N_AXIS), max(LOG_N_AXIS), a.n_log_n)
+        log_n_lo = min(LOG_N_AXIS)
+        log_n_hi = a.log_n_max if a.log_n_max is not None else max(LOG_N_AXIS)
+        if a.log_n_max is not None:
+            out_csv = os.path.join(outdir_for(a.rates), f'grid_fine_ext{a.log_n_max:.1f}.csv')
+        else:
+            out_csv = out_csv_for(a.rates, fine=True)
+        log_n_vals = np.linspace(log_n_lo, log_n_hi, a.n_log_n)
         T_vals = np.linspace(min(T_AXIS), max(T_AXIS), a.n_T)
         ndv_vals = np.linspace(min(LOG_NDV_AXIS), max(LOG_NDV_AXIS), a.n_log_ndv)
         compute_grid(log_n_vals, T_vals, ndv_vals, out_csv, collision_matrix_fn=cmat_fn)
     else:
+        out_csv = out_csv_for(a.rates, fine=a.fine)
         compute_grid(LOG_N_AXIS, T_AXIS, LOG_NDV_AXIS, out_csv, collision_matrix_fn=cmat_fn)
 
 
