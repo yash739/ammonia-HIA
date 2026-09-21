@@ -837,3 +837,18 @@ a different part of the grid; W33's distance (2.4 kpc) and calibration
 differ from the mixed literature sources in Stutzki's own table; or this
 could be a smaller, more homogeneous 2-source sample simply landing
 favourably by chance. Flagged here rather than asserted as resolved.
+
+**Follow-up: is the good W33 agreement rate-set-dependent?** New
+`stutzki85/w33_rates_comparison.py` directly compares the two escape1d
+runs (Loreau vs full_original rates, same 1D method both times — the
+complementary test to the existing gold-vs-escape1d method comparison).
+No new compute — reads the two already-computed W33 summaries. Result:
+neither rate set is uniformly better. Stutzki's own rates land closer at
+W33_A (predicted 0.0959 vs observed 0.0927, 3.5% off, vs Loreau's 0.1036,
+11.8% off); Loreau lands closer at W33_B (0.1161 vs observed 0.1136, 2.2%
+off, vs Stutzki's own 0.1208, 6.3% off). Both stay within the same good
+~2-12% band regardless of rate choice — the strong W33 agreement is
+robust to which collisional rates are used, not an artefact of picking
+one particular table. This narrows, but doesn't fully answer, §13's open
+question: whatever is different about W33 vs the Stutzki positions, it
+isn't simply "one rate set happens to work better for W33."
