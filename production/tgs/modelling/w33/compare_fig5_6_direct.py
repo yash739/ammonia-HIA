@@ -1,35 +1,42 @@
 """Paper I, Work item 3: the real Fig. 5/6 comparison -- not against Eq. (11)
-(the LTE no-anomaly floor, a different thing entirely), but against a direct
-run of Stutzki & Winnewisser (1985)'s OWN escape-probability method, at his
+(the LTE no-anomaly floor, a different thing entirely), but against direct
+runs of Stutzki & Winnewisser (1985)'s OWN escape-probability method, at his
 own exact Fig. 5/6 parameters (T_k in {18,26,36} K, n'_H2 in
 {10^3.5,10^5.0,10^7.0} cm^-3, N_NH3 in 10^13.7-10^15.1 cm^-2 at
 Delta v = 0.3 km/s).
 
-Three curves per panel, one panel per (T_k, n'_H2) combination (9 panels,
+Four curves per panel, one panel per (T_k, n'_H2) combination (9 panels,
 matching his own figure's own layout):
   (a) escape1d + full_original (95% Stutzki-sourced) rates -- a faithful
-      stand-in for his own published curves, run at his exact parameters
-      (stutzki85/run_fig5_6_grid.py, already computed).
-  (b) the Magritte 3D NLTE "fig56" grid -- full non-LTE radiative transfer
+      stand-in for his own published curves, run at his exact parameters.
+  (b) escape1d + Loreau et al. (2023) rates -- the modern hyperfine-
+      resolved NH3-H2 rates used throughout the rest of this project's
+      escape1d work (and what Magritte's own 3D NLTE leg uses internally).
+      Same method as (a), different rates -- isolates the rates' own
+      contribution, complementary to the gold-vs-escape1d method-swap
+      comparison already in the paper.
+  (c) the Magritte 3D NLTE "fig56" grid -- full non-LTE radiative transfer
       at the SAME (T_k, n'_H2, N/dv) grid points, with the tau_main and
-      model.write() fixes already applied (w33/build_lut_fig56.py, already
-      computed).
-  (c) Eq. (11), the LTE no-anomaly reference (for context only -- both (a)
-      and (b) include the trapping anomaly; Eq. 11 does not).
+      model.write() fixes already applied (w33/build_lut_fig56.py).
+  (d) Eq. (11), the LTE no-anomaly reference (for context only -- (a),(b)
+      and (c) all include the trapping anomaly; Eq. 11 does not).
 
-The quantitative comparison that matters is (a) vs (b): same physical
-parameters, two different radiative-transfer treatments (1D escape
-probability vs full 3D non-LTE). Reported per panel as the median/max
-absolute ratio residual between the two curves, interpolating the escape1d
-curve (80 points) onto the Magritte grid's own (sparser, 8-9 point) tau_main
-values in log-tau space.
+(stutzki85/run_fig5_6_grid.py --rates {loreau,full_original} computes (a)
+and (b); both already run.)
+
+Three quantitative residuals reported per panel (interpolating each denser
+escape1d curve onto Magritte's own sparser tau_main points in log-tau
+space): full_original-vs-Magritte and loreau-vs-Magritte (method-fixed
+rates-vs-Magritte, i.e. how much either rate choice differs from the full
+3D treatment), and loreau-vs-full_original (rates-only, method fixed --
+the complementary test).
 
 Caveat carried from reproduce_stutzki_fig5_6.py: the n'_H2=10^3.5 branch
 implies large clump radii at high column (>0.15 pc rising toward ~10 pc at
 the highest log_N_dv point, which also failed the Magritte convergence gate
 and is excluded) -- well outside Stutzki's own ~0.01 pc clump picture. Kept
 in rather than radius-masked here (unlike the general-grid script) because
-the point of this comparison is the two radiative-transfer treatments at
+the point of this comparison is the radiative-transfer/rates treatments at
 IDENTICAL (T,n,N/dv), not enforcing physical plausibility of the implied
 geometry -- but it means the n'=3.5 panels should be read as a mathematical
 comparison, not a claim about real sub-arcsecond clumps that dense.
@@ -52,13 +59,21 @@ sys.path.insert(0, _STUTZKI85)
 from stutzki_physics import eq11_thermal_ratio
 
 MAGRITTE_CSV = "/home/yasho379/magritte_rebuilt/production/output_lut_fig56/results/lut_dv0.30.csv"
-ESCAPE1D_CSV = "/home/yasho379/magritte_rebuilt/production/output_escape1d/results_full_original_rates/fig56_curves.csv"
+ESCAPE1D_CSV = {
+    'full_original': "/home/yasho379/magritte_rebuilt/production/output_escape1d/results_full_original_rates/fig56_curves.csv",
+    'loreau': "/home/yasho379/magritte_rebuilt/production/output_escape1d/results_loreau_rates/fig56_curves.csv",
+}
 OUTDIR = "/home/yasho379/magritte_rebuilt/production/output_lut_fig56/results/fig5_6_direct_comparison/"
 
 TEMPS = [18.0, 26.0, 36.0]
 LOG_NS = [3.5, 5.0, 7.0]
 
-# (panel title, magritte ratio col, escape1d ratio col, eq11 component, y label)
+ESCAPE1D_STYLE = {
+    'full_original': dict(color='tab:blue', lw=2.0, label="escape1d, Stutzki's own rates"),
+    'loreau': dict(color='tab:green', lw=2.0, ls=(0, (4, 1.5)), label='escape1d, Loreau rates'),
+}
+
+# (panel key, panel title, magritte ratio col, escape1d ratio col, eq11 component, y label)
 OBSERVABLES = [
     ('outer_01', r'$F_1=0\to1$ (outer)', 'R_01_MAIN', 'R_01', 'outer',
      r'$T_B(F_1{=}0{\to}1)/T_B(\Delta F_1{=}0)$'),
@@ -76,24 +91,30 @@ def load_magritte():
     return df
 
 
-def load_escape1d():
-    df = pd.read_csv(ESCAPE1D_CSV)
+def load_escape1d(rates):
+    df = pd.read_csv(ESCAPE1D_CSV[rates])
     df = df[df['converged'] & (df['tau_main'] > 0)]
     df['Avg_Inner_Ratio'] = (df['R_12'] + df['R_21']) / 2.0
     return df
 
 
-def interp_residual(mag_tau, mag_ratio, esc_tau, esc_ratio):
-    """Interpolate the (denser) escape1d curve onto the Magritte grid's own
-    tau_main points, in log-tau space, and return per-point residuals."""
-    order = np.argsort(esc_tau)
-    esc_tau_s, esc_ratio_s = esc_tau[order], esc_ratio[order]
-    log_esc_tau = np.log10(esc_tau_s)
-    in_range = (mag_tau >= esc_tau_s.min()) & (mag_tau <= esc_tau_s.max())
+def interp_residual(ref_tau, ref_ratio, other_tau, other_ratio):
+    """Interpolate the (denser) `other` curve onto `ref`'s own tau points,
+    in log-tau space, and return per-point residuals (ref - other)."""
+    order = np.argsort(other_tau)
+    other_tau_s, other_ratio_s = other_tau[order], other_ratio[order]
+    log_other_tau = np.log10(other_tau_s)
+    in_range = (ref_tau >= other_tau_s.min()) & (ref_tau <= other_tau_s.max())
     if in_range.sum() == 0:
-        return np.array([]), np.array([])
-    esc_at_mag = np.interp(np.log10(mag_tau[in_range]), log_esc_tau, esc_ratio_s)
-    return mag_ratio[in_range] - esc_at_mag, mag_tau[in_range]
+        return np.array([])
+    other_at_ref = np.interp(np.log10(ref_tau[in_range]), log_other_tau, other_ratio_s)
+    return ref_ratio[in_range] - other_at_ref
+
+
+def summarize_residual(resid):
+    if len(resid) == 0:
+        return np.nan, np.nan, 0
+    return np.median(np.abs(resid)), np.max(np.abs(resid)), len(resid)
 
 
 def main():
@@ -103,9 +124,10 @@ def main():
     os.makedirs(a.out_dir, exist_ok=True)
 
     mag = load_magritte()
-    esc = load_escape1d()
+    esc = {rates: load_escape1d(rates) for rates in ESCAPE1D_CSV}
     print(f"Magritte fig56 grid: {len(mag)} converged rows")
-    print(f"escape1d full_original fig56 curves: {len(esc)} converged rows")
+    for rates, df in esc.items():
+        print(f"escape1d {rates} fig56 curves: {len(df)} converged rows")
 
     tau_ref = np.logspace(-2.2, 1.3, 300)
     summary_rows = []
@@ -118,34 +140,44 @@ def main():
         for i, T in enumerate(TEMPS):
             for j, log_n in enumerate(LOG_NS):
                 ax = axes[i, j]
-                mag_sub = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], log_n)]
-                esc_sub = esc[np.isclose(esc['T_k'], T) & np.isclose(esc['log_n_H2'], log_n)]
-                mag_sub = mag_sub.sort_values('tau_main')
-                esc_sub = esc_sub.sort_values('tau_main')
+                mag_sub = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], log_n)].sort_values('tau_main')
+                esc_sub = {rates: df[np.isclose(df['T_k'], T) & np.isclose(df['log_n_H2'], log_n)].sort_values('tau_main')
+                           for rates, df in esc.items()}
 
-                ax.plot(esc_sub['tau_main'], esc_sub[esc_col], color='tab:blue', lw=2.0,
-                        label="escape1d, Stutzki's own rates" if (i == 0 and j == 0) else None)
+                first_panel = (i == 0 and j == 0)
+                for rates, sub in esc_sub.items():
+                    style = dict(ESCAPE1D_STYLE[rates])
+                    if not first_panel:
+                        style['label'] = None
+                    ax.plot(sub['tau_main'], sub[esc_col], **style)
                 ax.plot(mag_sub['tau_main'], mag_sub[mag_col], color='tab:red', lw=1.6,
-                        marker='o', ms=4, label='Magritte 3D NLTE' if (i == 0 and j == 0) else None)
+                        marker='o', ms=4, label='Magritte 3D NLTE' if first_panel else None)
                 ax.plot(tau_ref, eq11_thermal_ratio(tau_ref, eq11_comp), color='black', lw=1.3,
-                        ls='--', alpha=0.7, label='Eq. (11), no anomaly' if (i == 0 and j == 0) else None)
+                        ls=':', alpha=0.7, label='Eq. (11), no anomaly' if first_panel else None)
 
-                resid, resid_tau = interp_residual(
-                    mag_sub['tau_main'].values, mag_sub[mag_col].values,
-                    esc_sub['tau_main'].values, esc_sub[esc_col].values)
-                if len(resid) > 0:
-                    med_abs = np.median(np.abs(resid))
-                    max_abs = np.max(np.abs(resid))
-                    ax.set_title(f"T={T:.0f}K, n'=$10^{{{log_n:.1f}}}$\n"
-                                 f"|resid| median={med_abs:.3f} max={max_abs:.3f}", fontsize=9)
-                else:
-                    med_abs = max_abs = np.nan
-                    ax.set_title(f"T={T:.0f}K, n'=$10^{{{log_n:.1f}}}$\nno overlap", fontsize=9)
+                resid_fo = interp_residual(mag_sub['tau_main'].values, mag_sub[mag_col].values,
+                                            esc_sub['full_original']['tau_main'].values,
+                                            esc_sub['full_original'][esc_col].values)
+                resid_lo = interp_residual(mag_sub['tau_main'].values, mag_sub[mag_col].values,
+                                            esc_sub['loreau']['tau_main'].values,
+                                            esc_sub['loreau'][esc_col].values)
+                resid_rates = interp_residual(esc_sub['loreau']['tau_main'].values, esc_sub['loreau'][esc_col].values,
+                                               esc_sub['full_original']['tau_main'].values,
+                                               esc_sub['full_original'][esc_col].values)
 
-                summary_rows.append(dict(observable=obs_key, T_k=T, log_n_H2=log_n,
-                                          n_overlap=len(resid), median_abs_resid=med_abs,
-                                          max_abs_resid=max_abs,
-                                          n_magritte=len(mag_sub), n_escape1d=len(esc_sub)))
+                med_fo, max_fo, n_fo = summarize_residual(resid_fo)
+                med_lo, max_lo, n_lo = summarize_residual(resid_lo)
+                med_rates, max_rates, n_rates = summarize_residual(resid_rates)
+
+                ax.set_title(f"T={T:.0f}K, n'=$10^{{{log_n:.1f}}}$\n"
+                             f"vs Magritte: full_orig med={med_fo:.3f}, loreau med={med_lo:.3f}",
+                             fontsize=8.5)
+
+                for rates, med, mx, n in [('full_original_vs_magritte', med_fo, max_fo, n_fo),
+                                          ('loreau_vs_magritte', med_lo, max_lo, n_lo),
+                                          ('loreau_vs_full_original', med_rates, max_rates, n_rates)]:
+                    summary_rows.append(dict(observable=obs_key, T_k=T, log_n_H2=log_n, comparison=rates,
+                                              n_overlap=n, median_abs_resid=med, max_abs_resid=mx))
 
                 ax.set_xscale('log')
                 ax.set_ylim(0.0, 1.05)
@@ -155,9 +187,9 @@ def main():
                 if j == 0:
                     ax.set_ylabel(ylabel, fontsize=9)
 
-        fig.legend(loc='upper center', ncol=3, fontsize=10, bbox_to_anchor=(0.5, 1.02))
-        plt.suptitle(f'{obs_title}: escape1d (Stutzki\'s own rates) vs. Magritte 3D NLTE, '
-                     f'at his exact Fig. 5/6 parameters', y=1.06, fontsize=12)
+        fig.legend(loc='upper center', ncol=4, fontsize=9.5, bbox_to_anchor=(0.5, 1.03))
+        plt.suptitle(f'{obs_title}: escape1d (both rate sets) vs. Magritte 3D NLTE, '
+                     f'at his exact Fig. 5/6 parameters', y=1.07, fontsize=12)
         plt.tight_layout()
         out_png = os.path.join(a.out_dir, f'fig5_6_direct_{obs_key}.png')
         plt.savefig(out_png, dpi=170, bbox_inches='tight')
@@ -171,9 +203,10 @@ def main():
     print()
     print(summary.to_string(index=False))
     print()
-    valid = summary.dropna(subset=['median_abs_resid'])
-    print(f"overall median |residual| across all panels: {valid['median_abs_resid'].median():.4f}")
-    print(f"overall max |residual| across all panels: {valid['max_abs_resid'].max():.4f}")
+    for comparison in summary['comparison'].unique():
+        valid = summary[(summary['comparison'] == comparison)].dropna(subset=['median_abs_resid'])
+        print(f"{comparison}: overall median |residual| = {valid['median_abs_resid'].median():.4f}, "
+              f"max = {valid['max_abs_resid'].max():.4f}")
 
 
 if __name__ == '__main__':
