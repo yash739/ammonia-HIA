@@ -1072,3 +1072,69 @@ cube at matched point count, 4.9% RMS) still isn't monotonic and isn't
 a production-viable mesh on its own. The hybrid-mesh conclusion in sec 16
 stands: cube mesh for production, hybrid mesh implemented and available
 but not adopted, radial mesh reserved for cheap LTE-only validation.
+
+### 17.1 Why the remesher exists, and why `cube_raw` is not a real alternative
+
+Worth recording explicitly, since Q2 above could be misread as "the
+remesher is a bug" -- it is not. `mesher.remesh_point_cloud` is a
+density-adaptive coarsener: it collapses an octree box to one
+representative point wherever the density inside barely varies, and
+subdivides finely wherever it does. That is exactly the right behaviour
+for Magritte's actual use case -- real turbulent/clumpy/disk-structured
+sources where you don't know a priori where the interesting physics
+lives, and where brute-forcing a uniform fine grid everywhere would be
+ruinously expensive. It is the reason Magritte can model structured 3D
+sources without hand-placed points.
+
+The uniform-sphere validation geometry used throughout this
+investigation is a pathological case for that specific criterion: the
+interior density is *exactly* flat (zero local variance anywhere for
+0<r<R, all the "information" concentrated in one step at r=R). The
+remesher's criterion is density variance, but what the chord-law test
+needs is *geometric* information -- how path length through the sphere
+changes with impact parameter. A box at r=0.2R and a box at r=0.6R have
+identical local density, so the remesher sees no reason to keep more
+than one point in either, even though they sit on chords of different
+length. This is a mismatch between the remesher's design assumption
+(informative structure = density gradient) and this one geometry
+(informative structure = radius alone, with no density gradient to
+signal it) -- not a defect in the remesher's general logic.
+
+That mismatch is also precisely why `cube_raw` (Q2, remesher skipped
+entirely) is not being proposed as a production default, despite scoring
+far better on this one accuracy metric than the production cube mesh:
+
+1. **It doesn't solve the cost problem.** At the point count needed to
+   reach its best measured accuracy (1128-1952 pts), it sits in the same
+   expensive territory as the hybrid (814 pts, 7.38x cube) and radial
+   (1313 pts, 12.85x cube) meshes already ruled out on cost grounds in
+   sec 16. Skipping the remesher doesn't dodge that; NLTE cost was never
+   separately re-measured for `cube_raw`, but there's no mechanism by
+   which it would be cheaper than hybrid at a comparable point count --
+   likely worse, since it also has zero mitigation for the near-origin
+   small-cell issue sec 16's cost measurement implicated.
+2. **No adaptivity means it doesn't scale to real (non-toy) sources.**
+   For an actual clumpy or disk-structured source -- the real
+   astrophysical case Magritte exists for -- `cube_raw` would burn
+   enormous point-count budget densely sampling boring uniform regions
+   while a real remesher correctly economises there and spends the
+   budget where density genuinely varies. Its win here is specific to
+   the validation sphere having no real structure to adapt to; it is not
+   evidence that skipping the remesher is good practice in general.
+3. **It doesn't even fully close the gap on its own terms.** Even at
+   matched-or-excess point count relative to radial, RMS plateaus at
+   4.7-4.9% (not radial's 1.4%) and stays non-monotonic. Something about
+   radial's shell topology -- uniform coverage per shell IN r, not per
+   unit volume -- is doing real work that raw Cartesian point density
+   cannot fully replace, regardless of how many points are used.
+4. **It was only ever built and tested as a diagnostic.** No handling
+   for the `fov_pad_factor>1.2` background fringe, no testing across the
+   grid's actual density range (does point count/cost stay flat the way
+   the current cube mesh is verified to?), no validation at production
+   grid scale.
+
+The general lesson: the fix for a known, exploitable symmetry (a sphere)
+is to hand-code that symmetry directly into the seed (radial shells),
+not to fight or disable the density-adaptive remesher that exists for
+the much harder, more general case where the symmetry isn't known in
+advance.
