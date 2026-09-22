@@ -993,3 +993,82 @@ available: if a future work item specifically needs radial-grade
 accuracy, the hybrid is strictly better than pure radial (same accuracy
 at 7.38x cube instead of 12.85x, a real 1.74x saving) — it just isn't
 cheap enough relative to cube to replace it as the default.
+
+## 17. Work item -1 follow-up: resolution, matched point count, boundary config (09-22)
+
+Three direct follow-up questions, all LTE-only, same reference point
+throughout (`mesh_economy_followup.py`, new).
+
+**Q1 -- does upping the plain cube mesh's `resolution` fix the defect?**
+Swept 10/14/18/24 (with the ordinary density remesher, as production
+uses). RMS: 24.6%/20.7%/21.0%/23.5% -- plateaus, never approaches
+radial's 1.4%. **Monotonicity never fixes at any resolution tested.**
+Limb recovery DOES improve substantially (limb/law 0.003->0.34->0.68,
+dipping to 0.60 at res=24) and the fitted central optical depth climbs
+toward the true value (0.645->0.72), because a finer seed gives the
+remesher finer boxes right at the one place it has any density gradient
+to detect (r=r_out) -- but the flat interior has no gradient at ANY seed
+density, so it collapses regardless of `resolution`. Confirms directly:
+resolution alone is not a fix.
+
+**Q2 -- if cube and radial had ~matched point count, does the gap
+close?** New `mesh={'kind':'cube_raw'}` (added to `build_point_cloud`):
+same Cartesian seed as the ordinary cube path, remesher skipped entirely.
+Decisive: res=10 raw (376 pts, RMS=16.7%) already beats the REMESHED
+cube at res=24 (647 pts, RMS=23.5%) -- **the remesher itself is the
+single biggest source of error**, worse than any resolution choice. At
+matched-or-excess point count (res=16: 1128 pts vs radial's 1313),
+RMS drops to **4.9%** -- within a factor of ~3.5 of radial's 1.4%, a huge
+improvement over the production cube's 24.6%, but still not matching it,
+and **still non-monotonic** at every point count tested (up to 1952 pts
+at res=20, RMS=4.7%, plateaued). So: point count under Cartesian
+topology explains most of the gap to radial, but not all of it --
+radial's shell structure (uniform coverage per shell IN r, not per unit
+volume) has a genuine topological advantage that no amount of Cartesian
+point count fully replicates. `cube_raw` is diagnostic-only, not proposed
+for production (it has no density awareness at all, so it would scale
+poorly and wastefully at higher resolutions where most raw points fall
+outside the sphere entirely).
+
+**Q3 -- does the boundary shell configuration matter?** Added a
+`boundary_healpy_order` override (default 3, matching existing behaviour
+byte-for-byte) and swept 2/3/5/8 on the production cube mesh (the two
+boundary shells are 12*order^2 points each, currently hardcoded to
+order=3 = 108 points/shell everywhere, ~80% of a pad=1.0 cube's total
+269 points). RMS stays in the same 21-25% band across the whole sweep;
+monotonicity never fixes. **Confirms the interior remesher collapse is
+the dominant defect, not boundary under-sampling.** One real but minor
+wrinkle, worth recording so it isn't rediscovered as a false lead: at
+`fov_pad_factor=1.0` (used throughout this whole diagnostic, matching
+`chord_experiment.py`'s own convention) the OUTER boundary shell sits
+almost exactly at r=r_out, so it directly participates in the "limb" RMS
+bin -- order=3's oddly bad limb/law=0.003 here is an artefact of that
+coincidental overlap (order=2/5/8 all score better on limb despite
+having fewer or more points, a non-monotonic-in-order result that would
+be a mistake to over-interpret as a trend). Production's actual
+`fov_pad_factor=1.15` places the boundary outside the sphere, so this
+specific pad=1.0 quirk doesn't carry over to gold/platinum.
+
+**Real bug found and fixed in the process.** `mesh_tag()` returned `''`
+for every `kind='cube'` mesh regardless of `boundary_healpy_order`, so
+two different boundary-order runs at the same physical point collided on
+the same cached `.hdf5` model file. The `order=2` sweep run overwrote the
+standard `order=3` cube's cache (already written and used successfully
+earlier in this same investigation for the committed chord-law figures);
+a subsequent `order=3` run then tried to read that mismatched file and
+**segfaulted**. Fixed: `mesh_tag()` now appends `_bhoN` whenever
+`boundary_healpy_order` differs from the default 3, for every mesh kind
+including plain cube. The corrupted cache file was deleted and rebuilds
+correctly from scratch. No committed results were affected -- the
+committed chord-law/cost figures (sec 16) were generated and saved before
+this collision occurred; this only corrupted a cache file for
+*subsequent* runs at that exact point, caught and fixed within the same
+session before anything relying on it ran again.
+
+**Net effect on the Work item -1 decision**: none of these three follow-
+ups reopens it. No cheap resolution or boundary tweak gets the plain cube
+mesh close to radial's accuracy; the closest approach (raw/unremeshed
+cube at matched point count, 4.9% RMS) still isn't monotonic and isn't
+a production-viable mesh on its own. The hybrid-mesh conclusion in sec 16
+stands: cube mesh for production, hybrid mesh implemented and available
+but not adopted, radial mesh reserved for cheap LTE-only validation.

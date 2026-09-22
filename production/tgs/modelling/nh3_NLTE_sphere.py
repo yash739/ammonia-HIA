@@ -456,6 +456,20 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
 
     position = np.column_stack((Xs.ravel(), Ys.ravel(), Zs.ravel()))
 
+    if mesh is not None and mesh.get('kind') == 'cube_raw':
+        # Diagnostic only: same Cartesian seed as the ordinary cube path, but
+        # the density remesher is skipped entirely -- isolates whether the
+        # chord-law defect is a point-COUNT problem (raw seed kept in full,
+        # no collapse) or a TOPOLOGY problem (Cartesian placement itself,
+        # independent of how many points survive). 09-21/22 mesh economy
+        # investigation.
+        origin = np.array([0.0, 0.0, 0.0]).T
+        positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_inner_boundary(
+            position, 0, 0.01 * r_out, healpy_order=3, origin=origin)
+        positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_outer_boundary(
+            positions_reduced, nb_boundary, r_boundary, healpy_order=3, origin=origin)
+        return positions_reduced * scale, nb_boundary
+
     if fov_pad_factor > 1.2:
         # Coarse background-density fringe out to r_boundary, so the imager's FOV
         # (== the mesh's outer boundary) extends several beam-widths past the
@@ -480,12 +494,15 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
         position, rhos_ravel, max_depth=5, threshold=2e-1, hullorder=3
     )
 
+    # boundary_healpy_order override for the mesh-economy diagnostic (09-22):
+    # default 3 reproduces existing behaviour byte-for-byte.
+    _bho = (mesh or {}).get('boundary_healpy_order', 3)
     origin = np.array([0.0, 0.0, 0.0]).T
     positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_inner_boundary(
-        positions_reduced, nb_boundary, 0.01 * r_out, healpy_order=3, origin=origin
+        positions_reduced, nb_boundary, 0.01 * r_out, healpy_order=_bho, origin=origin
     )
     positions_reduced, nb_boundary = mesher.point_cloud_add_spherical_outer_boundary(
-        positions_reduced, nb_boundary, r_boundary, healpy_order=3, origin=origin
+        positions_reduced, nb_boundary, r_boundary, healpy_order=_bho, origin=origin
     )
     npoints = len(positions_reduced)
     return positions_reduced * scale, nb_boundary
@@ -493,16 +510,23 @@ def build_point_cloud(rho_cloud, r_out, r_boundary, resolution=5, fov_pad_factor
 
 def mesh_tag(mesh):
     """Model-file suffix. Empty for the default cube so existing model files keep
-    their names; otherwise distinct, so a radial/hybrid and a cube run at identical
-    physics never write the same .hdf5 in the shared model_files/ directory."""
+    their names; otherwise distinct, so a radial/hybrid/cube_raw and a cube run at
+    identical physics never write the same .hdf5 in the shared model_files/
+    directory. `boundary_healpy_order` (default 3) is appended whenever
+    overridden, on TOP of the kind-specific tag below -- this was the source of
+    a real cache collision/segfault during the 09-22 mesh-economy boundary-
+    resolution sweep (two different boundary_healpy_order values sharing kind
+    'cube' got the same '' tag and one run read the other's mismatched .hdf5)."""
+    bho = (mesh or {}).get('boundary_healpy_order', 3)
+    bho_tag = '' if bho == 3 else f'_bho{bho}'
     if mesh is None or mesh.get('kind', 'cube') == 'cube':
-        return ''
+        return bho_tag
     if mesh['kind'] == 'hybrid':
         return (f"_hybrid{mesh.get('core_radius_frac', 0.4)}"
                 f"_{mesh.get('n_shell_core', 6)}x{mesh.get('base_core', 260)}"
                 f"sf{mesh.get('surface_frac', 'none')}"
-                f"s{mesh.get('seed', 7)}")
-    return f"_{mesh['kind']}{mesh.get('n_shell', 14)}x{mesh.get('base', 260)}s{mesh.get('seed', 7)}"
+                f"s{mesh.get('seed', 7)}{bho_tag}")
+    return f"_{mesh['kind']}{mesh.get('n_shell', 14)}x{mesh.get('base', 260)}s{mesh.get('seed', 7)}{bho_tag}"
 
 
 def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, max_NLTE=20, radius_sphere=1e16,
