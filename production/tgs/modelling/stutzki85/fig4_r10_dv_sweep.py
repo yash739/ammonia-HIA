@@ -53,28 +53,53 @@ def main():
         for dv, df in dfs.items():
             print(f"rates={rates} dv={dv}: {len(df)} converged rows ({df['any_maser'].mean():.1%} masing)")
 
-        fig, axes = plt.subplots(len(DVS), len(TEMPS), figsize=(3.4 * len(TEMPS), 3.1 * len(DVS)),
-                                  sharex=True, sharey=True)
-        for i, dv in enumerate(DVS):
+        # snap each (dv, T_target) to the nearest available fine-grid T once,
+        # and pool every panel's R_10 values to fix ONE shared colour scale
+        # across the whole figure (2nd-98th percentile of the pooled data,
+        # same floor-at-0.0 convention as contour_panel's own per-panel default)
+        panels = {}
+        pooled = []
+        for dv in DVS:
             df = dfs[dv]
             T_axis = np.sort(df['T_cloud'].unique())
-            for j, T_target in enumerate(TEMPS):
-                ax = axes[i, j]
-                # fine grid's T axis is a 50-pt linspace(9,48) -- doesn't land on
-                # round numbers the way the coarse grid does, so snap to nearest
+            for T_target in TEMPS:
                 T_actual = T_axis[np.argmin(np.abs(T_axis - T_target))]
                 df_T = df[np.isclose(df['T_cloud'], T_actual)]
+                panels[(dv, T_target)] = (T_actual, df_T)
+                vals = df_T[COL].values
+                pooled.append(vals[np.isfinite(vals)])
+        pooled = np.concatenate(pooled)
+        vmin, vmax = np.percentile(pooled, [2, 98])
+        vmin = min(vmin, 0.0)
+        print(f"shared colour scale for {rates}: vmin={vmin:.3f} vmax={vmax:.3f} "
+              f"(pooled 2nd-98th percentile over all {len(DVS)}x{len(TEMPS)} panels)")
+
+        fig, axes = plt.subplots(len(DVS), len(TEMPS), figsize=(3.0 * len(TEMPS) + 1.0, 3.1 * len(DVS)),
+                                  sharex=True, sharey=True)
+        last_cf = None
+        for i, dv in enumerate(DVS):
+            for j, T_target in enumerate(TEMPS):
+                ax = axes[i, j]
+                T_actual, df_T = panels[(dv, T_target)]
                 title = f'T={T_actual:.2f}K (target {T_target:.0f}K)' if i == 0 else ''
-                contour_panel(fig, ax, df_T, COL, title, 'viridis', is_ratio=True)
+                cf = contour_panel(fig, ax, df_T, COL, title, 'viridis', is_ratio=True,
+                                    vmin=vmin, vmax=vmax, draw_colorbar=False)
+                if cf is not None:
+                    last_cf = cf
                 if j == 0:
                     ax.set_ylabel(rf'$\Delta v$={dv:.1f} km/s' + '\n' + r'log($N_{NH_3}/\Delta v$)', fontsize=8)
                 if i == len(DVS) - 1:
                     ax.set_xlabel(r'log($n_{H_2}$)', fontsize=8)
 
         plt.suptitle(f'{TITLE}\nescape1d, {rates} rates, guard_masers=False -- '
-                     r'$\Delta v$ sweep at fixed log($N_{NH_3}/\Delta v$) axis',
+                     r'$\Delta v$ sweep at fixed log($N_{NH_3}/\Delta v$) axis -- shared colour scale',
                      fontsize=12)
-        plt.tight_layout()
+        plt.tight_layout(rect=(0, 0, 0.90, 0.96))
+
+        cax = fig.add_axes((0.92, 0.15, 0.015, 0.7))
+        cb = fig.colorbar(last_cf, cax=cax)
+        cb.set_label(TITLE, fontsize=9)
+
         out_png = os.path.join(OUT_DIR, f'fig4_r10_dv_sweep_{rates}.png')
         plt.savefig(out_png, dpi=180)
         print(f"saved {out_png}\n")

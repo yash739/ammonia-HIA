@@ -49,7 +49,8 @@ def load_grid(path):
     return df
 
 
-def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True):
+def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True, vmin=None, vmax=None,
+                   draw_colorbar=True):
     """2nd-98th percentile colour clipping, matching the house convention
     from reproduce_raw_fig4_full.py: clipped BEFORE griddata interpolation
     (not just at display time), so an extreme outlier near the masing
@@ -57,7 +58,13 @@ def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True):
     itself and its neighbours -- only the clip boundary shows a step. Ratio
     panels always include the LTE/tau=0 floor (0.0) in the colour range even
     if the 2nd percentile sits above it, so the no-anomaly baseline stays
-    visible. Each panel gets its own colorbar (own percentile range)."""
+    visible.
+
+    By default each panel gets its own colorbar (own percentile range,
+    computed from that panel's own data). Pass explicit vmin/vmax (e.g. a
+    percentile range pooled across a whole figure's panels) to put multiple
+    panels on one shared colour scale instead -- draw_colorbar=False then
+    skips this panel's own colorbar so the caller can add one shared one."""
     x = df_T['log_n_H2'].values
     y = df_T['log_N_dv'].values
     raw = df_T[col].values
@@ -68,9 +75,12 @@ def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True):
                 ha='center', va='center', transform=ax.transAxes)
         ax.set_title(title, fontsize=10)
         return
-    lo, hi = np.percentile(raw, [2, 98])
-    if is_ratio:
-        lo = min(lo, 0.0)
+    if vmin is None or vmax is None:
+        lo, hi = np.percentile(raw, [2, 98])
+        if is_ratio:
+            lo = min(lo, 0.0)
+    else:
+        lo, hi = vmin, vmax
     z = np.clip(raw, lo, hi)
     gx = np.linspace(x.min(), x.max(), 200)
     gy = np.linspace(y.min(), y.max(), 200)
@@ -80,8 +90,9 @@ def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True):
     cs = ax.contour(GX, GY, GZ, levels=10, colors='k', linewidths=0.4, alpha=0.6)
     ax.clabel(cs, inline=True, fontsize=6, fmt='%.2f')
     ax.scatter(x, y, s=4, c='k', alpha=0.15)
-    cb = fig.colorbar(cf, ax=ax, fraction=0.046, pad=0.04)
-    cb.ax.tick_params(labelsize=6)
+    if draw_colorbar:
+        cb = fig.colorbar(cf, ax=ax, fraction=0.046, pad=0.04)
+        cb.ax.tick_params(labelsize=6)
     n_maser = int(df_T['any_maser'].values[valid].sum())
     ax.set_title(title + (f'\n({n_maser}/{len(x)} masing)' if n_maser else ''), fontsize=9)
     return cf
