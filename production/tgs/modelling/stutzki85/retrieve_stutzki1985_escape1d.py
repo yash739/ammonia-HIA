@@ -64,14 +64,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--rates', choices=['loreau', 'original', 'full_original'], default='loreau')
     ap.add_argument('--grid', default=None, help='override the grid path implied by --rates')
+    ap.add_argument('--dv', type=float, default=None,
+                    help='clump linewidth (km/s) selecting which --dv-tagged grid/output dir to '
+                         'use (see build_escape_grid.outdir_for); default the reference 0.3')
     ap.add_argument('--out-tag', default=None,
                     help='suffix for the output dir name (e.g. "ext8.5"), so results against a '
                          'non-standard grid (--grid) do not overwrite the standard ones')
     a = ap.parse_args()
 
-    grid_path = a.grid or out_csv_for(a.rates, fine=True)
+    grid_path = a.grid or out_csv_for(a.rates, fine=True, dv_kms=a.dv)
     dirname = 'stutzki1985_retrieval' + (f'_{a.out_tag}' if a.out_tag else '')
-    OUTDIR = os.path.join(outdir_for(a.rates), dirname)
+    OUTDIR = os.path.join(outdir_for(a.rates, dv_kms=a.dv), dirname)
     os.makedirs(OUTDIR, exist_ok=True)
     print(f"loading fine grid ({a.rates})...", flush=True)
     df = load_grid(grid_path)

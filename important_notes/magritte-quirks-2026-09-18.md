@@ -1138,3 +1138,87 @@ is to hand-code that symmetry directly into the seed (radial shells),
 not to fight or disable the density-adaptive remesher that exists for
 the much harder, more general case where the symmetry isn't known in
 advance.
+
+## 18. Work item 2a done: escape1d Delta_v sweep -- a real, rates-dependent degeneracy (09-24)
+
+`dv_clump_kms` threaded as a real parameter through `build_escape_grid.py`
+(`--dv` CLI flag, `outdir_for`/`out_csv_for` fold it into the path as
+`results_{rates}_rates_dv{dv:.2f}/` when non-default, reproducing the
+existing `results_{rates}_rates/` paths byte-for-byte at the reference
+0.3 km/s) and `retrieve_stutzki1985_escape1d.py` (matching `--dv`). Six
+new fine grids built (loreau/full_original x 0.2/0.5/0.8 km/s, ~15-21 min
+each, all converged cleanly), plus the 23-position Stutzki retrieval
+against each.
+
+**The naive expectation going in** (informal, not literally stated
+anywhere) was that retrieved density/chi2 should trend systematically
+with the assumed clump linewidth the way Zhou et al. (2020)'s HIA_OS-vs-
+sigma_v quenching predicts. **That is not what the sweep shows, and the
+reason why is itself the finding.**
+
+**Loreau rates: the retrieval is almost completely Delta_v-invariant.**
+Only 3/23 positions move by >0.02 dex in retrieved log_n_H2 across the
+full 0.2-0.8 km/s range (a 4x span). Directly verified why, in three
+steps: (1) the model's own predicted ratios at FIXED grid coordinates
+change substantially with Delta_v (tau_main 0.75->2.97 across the sweep
+at one test point, R_01 0.38->0.64) -- so the underlying physics is
+genuinely Delta_v-sensitive; (2) but `log(N_NH3/Delta_v)` is a FREE
+fitted axis, and since N_total = 10^log(N/dv) x Delta_v, the retrieval
+can (and does) pick a different log(N/dv) grid point that reproduces
+essentially the same N_total, and hence essentially the same ratios --
+confirmed quantitatively: for S106 (-40,0), the fitted log(N/dv) shifts
+by almost exactly log10(dv_ref/dv_new) at each rung (e.g. 14.771 at
+dv=0.3 -> 14.926 at dv=0.2, vs. the 14.948 an exact N_total-preserving
+shift predicts), well within the fine grid's ~0.05 dex axis spacing; (3)
+so retrieved n_H2/T_k come out essentially fixed, and chi2 only shows the
+LEFTOVER residual -- the part of the trapping physics that depends on
+Delta_v directly (hyperfine-overlap quenching, not just column) rather
+than through N_total alone. That residual is real but small for most
+positions, except OMC2, whose chi2 jumps from ~1.5-1.6 at dv<=0.5 to
+3.47 at dv=0.8 -- right around where 0.8 km/s starts exceeding the
+~0.65 km/s span of the (2,1)->(1,1) hyperfine components the quenching
+mechanism depends on.
+
+**full_original (Stutzki's own) rates: genuinely Delta_v-sensitive.**
+19/23 positions move by >0.02 dex -- a completely different picture from
+Loreau under the identical sweep design. The median retrieved log_n_H2
+stays fairly flat (6.34/6.40/6.34/6.58 across 0.2/0.3/0.5/0.8), but
+individual positions move substantially -- most strikingly W48 (-40,40),
+pinned at the grid's density FLOOR (log_n=3.500) for dv<=0.5, then
+jumping to 6.920 at dv=0.8, a step-function threshold crossing exactly
+analogous to OMC2's under Loreau. `physically_consistent` fraction also trends up with Delta_v
+(69.6%->73.9%->73.9%->78.3% at dv=0.3/0.2/0.5/0.8 respectively -- not
+perfectly ordered in dv since 0.2 and 0.5 tie, but the reference 0.3 rung
+is the lowest and 0.8 the highest). `any_maser` fraction at the best fit
+is non-monotonic (47.8% at dv=0.2, 30.4% at dv=0.3, 39.1% at dv=0.5,
+30.4% at dv=0.8) but the widest-linewidth rung (0.8) ties for the lowest
+maser fraction, consistent with (not proof of) some real quenching.
+
+**The headline result**: whether this pipeline's chi^2 retrieval can
+even detect a Zhou-style linewidth-quenching signal depends strongly on
+which collision rates are used -- not because the underlying trapping
+physics differs qualitatively between rate sets, but because the
+log(N_NH3/Delta_v)-vs-Delta_v degeneracy that hides the effect under
+Loreau rates is evidently much less complete under full_original rates.
+This is a genuine, rates-dependent methodological finding, not a
+rates-independent physics conclusion -- echoes the Fig 5/6 comparison's
+own finding (sec 15) that outer-satellite anomaly amplitude is more
+sensitive to *method* than to rates in some regimes; here it's the
+*rates* that control whether a real physical effect (Delta_v-dependent
+trapping) is detectable at all through this retrieval's free-log(N/dv)
+design, in a different regime (linewidth sensitivity) than that earlier
+finding covered.
+
+Fig. 4-style R_10_MAIN contour panels across the sweep
+(`fig4_r10_dv_sweep.py`, reusing `reproduce_fig4_escape1d.py`'s own
+`contour_panel` on the FINE grids directly -- denser and no new compute
+vs. the coarse-grid original) confirm the raw model-level Delta_v
+sensitivity is real and substantial for both rate sets at the contour
+level, consistent with step (1) above.
+
+**Repo housekeeping decision**: the six new grid_fine.csv files (~40MB
+each, ~240MB total) are NOT tracked in git, unlike the existing reference
+(dv=0.3) grid_fine.csv files -- user's explicit choice, to avoid a large
+repo-size jump. They're cheap to regenerate (~15-21 min each via
+`build_escape_grid.py --fine --rates {rates} --dv {dv}`) and the actual
+deliverables (retrieval summary CSVs, comparison figures) ARE tracked.

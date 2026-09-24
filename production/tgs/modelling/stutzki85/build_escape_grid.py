@@ -52,14 +52,21 @@ RATES_FN = {
 }
 
 
-def outdir_for(rates):
-    d = os.path.join(BASE_OUTDIR, RATES_DIRNAME[rates])
+def outdir_for(rates, dv_kms=None):
+    """dv_kms=None (or the reference 0.3 km/s) reproduces the existing
+    'results_{rates}_rates' path byte-for-byte, so nothing already on disk
+    at the reference linewidth moves. Any other dv_kms gets its own
+    'results_{rates}_rates_dv{dv:.2f}' directory."""
+    base = RATES_DIRNAME[rates]
+    if dv_kms is not None and abs(dv_kms - m.DV_CLUMP_DEFAULT_KMS) > 1e-9:
+        base = f'{base}_dv{dv_kms:.2f}'
+    d = os.path.join(BASE_OUTDIR, base)
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def out_csv_for(rates, fine=False):
-    return os.path.join(outdir_for(rates), 'grid_fine.csv' if fine else 'grid.csv')
+def out_csv_for(rates, fine=False, dv_kms=None):
+    return os.path.join(outdir_for(rates, dv_kms=dv_kms), 'grid_fine.csv' if fine else 'grid.csv')
 
 
 # Backward-compat aliases -- unchanged Loreau paths, still importable as
@@ -74,8 +81,10 @@ AMP_KEYS = ['T_B_main', 'T_B_outer_01', 'T_B_outer_10', 'T_B_inner_12',
 RATIO_KEYS = ['R_01', 'R_10', 'R_12', 'R_21', 'R_2211', 'R_21_11']
 
 
-def compute_grid(log_n_vals, T_vals, log_ndv_vals, out_csv, collision_matrix_fn=None):
+def compute_grid(log_n_vals, T_vals, log_ndv_vals, out_csv, collision_matrix_fn=None,
+                  dv_clump_kms=None):
     collision_matrix_fn = collision_matrix_fn or RATES_FN['loreau']
+    dv_clump_kms = DV_CLUMP_KMS if dv_clump_kms is None else dv_clump_kms
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     model = m.NH3Model()
     m.assert_expected_grouping(model)
@@ -91,7 +100,7 @@ def compute_grid(log_n_vals, T_vals, log_ndv_vals, out_csv, collision_matrix_fn=
             n_H2 = 10.0 ** log_n
             for log_Ndv in log_ndv_vals:  # ascending -- tracks the low-tau-connected branch
                 out = m.run_one(model, Cmat, T_k=T, n_H2=n_H2, log_N_dv=log_Ndv,
-                                dv_clump_kms=DV_CLUMP_KMS, x0=x0, guard_masers=GUARD_MASERS)
+                                dv_clump_kms=dv_clump_kms, x0=x0, guard_masers=GUARD_MASERS)
                 x0 = out['x']
                 if not out['converged']:
                     n_fail += 1
@@ -131,6 +140,12 @@ def main():
                          "own ceiling, max(LOG_N_AXIS)=7.5). Writes to a separate "
                          "'grid_fine_ext<max>.csv' file so the standard grid_fine.csv is left "
                          "untouched -- extending the ceiling is an experiment, not a replacement.")
+    ap.add_argument('--dv', type=float, default=None,
+                    help="clump linewidth (km/s), default the reference 0.3 (m.DV_CLUMP_DEFAULT_KMS). "
+                         "Any other value writes to its own 'results_{rates}_rates_dv{dv:.2f}/' "
+                         "directory (see outdir_for) -- the log_N_dv AXIS values are unchanged, so "
+                         "this tests how the assumed clump linewidth alone shifts the predicted "
+                         "anomaly at fixed N_NH3/dv, per the master plan's L3 motivation.")
     a = ap.parse_args()
 
     cmat_fn = RATES_FN[a.rates]
@@ -138,16 +153,16 @@ def main():
         log_n_lo = min(LOG_N_AXIS)
         log_n_hi = a.log_n_max if a.log_n_max is not None else max(LOG_N_AXIS)
         if a.log_n_max is not None:
-            out_csv = os.path.join(outdir_for(a.rates), f'grid_fine_ext{a.log_n_max:.1f}.csv')
+            out_csv = os.path.join(outdir_for(a.rates, dv_kms=a.dv), f'grid_fine_ext{a.log_n_max:.1f}.csv')
         else:
-            out_csv = out_csv_for(a.rates, fine=True)
+            out_csv = out_csv_for(a.rates, fine=True, dv_kms=a.dv)
         log_n_vals = np.linspace(log_n_lo, log_n_hi, a.n_log_n)
         T_vals = np.linspace(min(T_AXIS), max(T_AXIS), a.n_T)
         ndv_vals = np.linspace(min(LOG_NDV_AXIS), max(LOG_NDV_AXIS), a.n_log_ndv)
-        compute_grid(log_n_vals, T_vals, ndv_vals, out_csv, collision_matrix_fn=cmat_fn)
+        compute_grid(log_n_vals, T_vals, ndv_vals, out_csv, collision_matrix_fn=cmat_fn, dv_clump_kms=a.dv)
     else:
-        out_csv = out_csv_for(a.rates, fine=a.fine)
-        compute_grid(LOG_N_AXIS, T_AXIS, LOG_NDV_AXIS, out_csv, collision_matrix_fn=cmat_fn)
+        out_csv = out_csv_for(a.rates, fine=a.fine, dv_kms=a.dv)
+        compute_grid(LOG_N_AXIS, T_AXIS, LOG_NDV_AXIS, out_csv, collision_matrix_fn=cmat_fn, dv_clump_kms=a.dv)
 
 
 if __name__ == '__main__':
