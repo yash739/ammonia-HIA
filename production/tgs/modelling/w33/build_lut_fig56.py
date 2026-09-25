@@ -25,7 +25,10 @@ import build_lut as b
 
 FIG56_ODIR = "/home/yasho379/magritte_rebuilt/production/output_lut_fig56/"
 
-LOG_N_AXIS = [3.5, 5.0, 7.0]
+# Stutzki's own three densities (3.5, 5.0, 7.0) plus 0.5-dex fill-in
+# (added 2026-09-24) for more curves per Fig. 5/6 panel. Resumable by key,
+# so the original 81 rows are skipped, not recomputed.
+LOG_N_AXIS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
 T_AXIS = [18.0, 26.0, 36.0]
 LOG_NDV_AXIS = [14.0, 14.225, 14.45, 14.675, 14.9, 15.125, 15.35, 15.575, 15.8]
 

@@ -57,12 +57,24 @@ class LutInterpolator:
     while an interior one now resolves between grid nodes.
     """
 
-    def __init__(self, lut_path=DEFAULT_LUT, max_radius_pc=DEFAULT_MAX_RADIUS_PC):
+    def __init__(self, lut_path=DEFAULT_LUT, max_radius_pc=DEFAULT_MAX_RADIUS_PC,
+                 exclude_keys=None):
+        """exclude_keys: optional iterable of (log_n_H2, T_cloud, log_N_dv)
+        tuples to drop from the point cloud before interpolating (matched to
+        1e-3) -- for hold-out tests where a truth node must not be in the
+        interpolant it is being recovered from."""
         df = pd.read_csv(lut_path)
         df = df[df['Status'] == 'SUCCESS']
         df = df[df['convergence_ok']]
         if max_radius_pc:
             df = df[df['radius_sphere'] <= max_radius_pc * PC_CM]
+        if exclude_keys:
+            drop = np.zeros(len(df), dtype=bool)
+            for (ln, tt, ld) in exclude_keys:
+                drop |= (np.isclose(df['log_n_H2'], ln, atol=1e-3) &
+                         np.isclose(df['T_cloud'], tt, atol=1e-3) &
+                         np.isclose(df['log_N_dv'], ld, atol=1e-3))
+            df = df[~drop]
         df = df.reset_index(drop=True)
         self.df = df
         self.X = df[['log_n_H2', 'T_cloud', 'log_N_dv']].values
