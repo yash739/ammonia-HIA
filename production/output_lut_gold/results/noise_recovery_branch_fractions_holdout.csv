@@ -1,0 +1,31 @@
+label,log_n_true,snr,estimator,n,at_truth,high_branch,low_branch
+low density,4.0,100,filt,200,0.38,0.62,0.0
+low density,4.0,100,raw,200,0.615,0.385,0.0
+low density,4.0,50,filt,200,0.29,0.71,0.0
+low density,4.0,50,raw,200,0.485,0.515,0.0
+low density,4.0,20,filt,200,0.085,0.915,0.0
+low density,4.0,20,raw,200,0.345,0.655,0.0
+low density,4.0,10,filt,200,0.14,0.86,0.0
+low density,4.0,10,raw,200,0.41,0.59,0.0
+low density,4.0,5,filt,200,0.17,0.83,0.0
+low density,4.0,5,raw,200,0.29,0.71,0.0
+mid density (worst interpolation region),5.5,100,filt,200,0.475,0.475,0.05
+mid density (worst interpolation region),5.5,100,raw,200,0.55,0.235,0.215
+mid density (worst interpolation region),5.5,50,filt,200,0.43,0.48,0.09
+mid density (worst interpolation region),5.5,50,raw,200,0.415,0.33,0.255
+mid density (worst interpolation region),5.5,20,filt,200,0.455,0.39,0.155
+mid density (worst interpolation region),5.5,20,raw,200,0.195,0.355,0.45
+mid density (worst interpolation region),5.5,10,filt,200,0.28,0.44,0.28
+mid density (worst interpolation region),5.5,10,raw,200,0.075,0.43,0.495
+mid density (worst interpolation region),5.5,5,filt,200,0.165,0.59,0.245
+mid density (worst interpolation region),5.5,5,raw,200,0.07,0.57,0.36
+high density,7.0,100,filt,200,0.695,0.0,0.305
+high density,7.0,100,raw,200,0.64,0.0,0.36
+high density,7.0,50,filt,200,0.595,0.0,0.405
+high density,7.0,50,raw,200,0.485,0.0,0.515
+high density,7.0,20,filt,200,0.46,0.0,0.54
+high density,7.0,20,raw,200,0.425,0.0,0.575
+high density,7.0,10,filt,200,0.31,0.0,0.69
+high density,7.0,10,raw,200,0.31,0.0,0.69
+high density,7.0,5,filt,200,0.415,0.0,0.585
+high density,7.0,5,raw,200,0.39,0.0,0.61

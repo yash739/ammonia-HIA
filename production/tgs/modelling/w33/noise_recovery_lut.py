@@ -261,6 +261,15 @@ def main():
             if (i + 1) % 500 == 0:
                 print(f"  {i+1}/{len(tasks)} done", flush=True)
 
+    # Per-realization dump (for histograms / branch fractions -- the
+    # aggregate median+scatter hides bimodality between density branches)
+    real_csv = f"/home/yasho379/magritte_rebuilt/production/output_lut_gold/results/noise_recovery_realizations_{MODE}.csv"
+    truth_by_label = {lab: (ln, T, ld) for lab, ln, T, ld in TRUTH_POINTS}
+    pd.DataFrame([dict(label=r[0], log_n_true=truth_by_label[r[0]][0], snr=r[1],
+                       raw_log_n=r[2], raw_T=r[3], filt_log_n=r[4], filt_T=r[5], fell_back=r[6])
+                  for r in all_results]).to_csv(real_csv, index=False)
+    print(f"saved {real_csv}")
+
     # Aggregate
     from collections import defaultdict
     by_key = defaultdict(list)
