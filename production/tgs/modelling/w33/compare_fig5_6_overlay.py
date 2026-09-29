@@ -20,9 +20,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from stutzki_physics import eq11_thermal_ratio
 from compare_fig5_6_direct import (MAGRITTE_CSV, ESCAPE1D_CSV, OUTDIR, TEMPS,
-                                   load_magritte, load_escape1d, interp_residual, summarize_residual)
+                                   load_magritte, load_escape1d, interp_residual, summarize_residual,
+                                   eq11_on_chord_axis)
 
 LOG_NS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
 STUTZKI_NS = {3.5, 5.0, 7.0}
@@ -41,7 +41,7 @@ def main():
     mag = load_magritte()
     cmap = plt.get_cmap('viridis')
     colors = {n: cmap(i / (len(LOG_NS) - 1)) for i, n in enumerate(LOG_NS)}
-    tau_ref = np.logspace(-2.2, 1.3, 300)
+    tau_ref = np.logspace(-2.2, 1.6, 300)
     resid_rows = []
 
     for rates, rates_label in RATES_LABEL.items():
@@ -51,17 +51,17 @@ def main():
         for i, T in enumerate(TEMPS):
             for j, (okey, otitle, mcol, ecol, eq11c) in enumerate(OBSERVABLES):
                 ax = axes[i, j]
-                ax.plot(tau_ref, eq11_thermal_ratio(tau_ref, eq11c), color='black', ls='--', lw=1.2, alpha=0.8)
+                ax.plot(tau_ref, eq11_on_chord_axis(tau_ref, eq11c), color='black', ls='--', lw=1.2, alpha=0.8)
                 for n in LOG_NS:
                     c = colors[n]
-                    e = esc[np.isclose(esc['T_k'], T) & np.isclose(esc['log_n_H2'], n)].sort_values('tau_main')
-                    mm = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], n)].sort_values('tau_main')
+                    e = esc[np.isclose(esc['T_k'], T) & np.isclose(esc['log_n_H2'], n)].sort_values('tau_chord')
+                    mm = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], n)].sort_values('tau_chord')
                     lw = 2.0 if n in STUTZKI_NS else 1.1
-                    ax.plot(e['tau_main'], e[ecol], color=c, lw=lw, alpha=0.9)
-                    ax.plot(mm['tau_main'], mm[mcol], ls='none', marker='o', ms=4,
+                    ax.plot(e['tau_chord'], e[ecol], color=c, lw=lw, alpha=0.9)
+                    ax.plot(mm['tau_chord'], mm[mcol], ls='none', marker='o', ms=4,
                             mfc=c, mec='white', mew=0.5)
-                    r = interp_residual(mm['tau_main'].values, mm[mcol].values,
-                                        e['tau_main'].values, e[ecol].values)
+                    r = interp_residual(mm['tau_chord'].values, mm[mcol].values,
+                                        e['tau_chord'].values, e[ecol].values)
                     med, mx, nov = summarize_residual(r)
                     resid_rows.append(dict(rates=rates, observable=okey, T_k=T, log_n_H2=n,
                                            n_overlap=nov, median_abs_resid=med, max_abs_resid=mx))
@@ -73,7 +73,7 @@ def main():
                 if j == 0:
                     ax.set_ylabel(f'$T_k$ = {T:.0f} K\nsatellite / main', fontsize=10)
                 if i == len(TEMPS) - 1:
-                    ax.set_xlabel(r'$\tau(\Delta F_1=0)$', fontsize=10)
+                    ax.set_xlabel(r'central-chord $\tau(\Delta F_1=0)$', fontsize=10)
 
         handles = [Line2D([], [], color=colors[n], lw=2.0 if n in STUTZKI_NS else 1.1,
                           label=f"log n' = {n:.1f}" + (' (Stutzki)' if n in STUTZKI_NS else ''))

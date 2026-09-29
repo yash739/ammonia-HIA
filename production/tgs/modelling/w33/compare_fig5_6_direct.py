@@ -88,13 +88,26 @@ def load_magritte():
     df = pd.read_csv(MAGRITTE_CSV)
     df = df[(df['Status'] == 'SUCCESS') & df['convergence_ok'] & (df['tau_main'] > 0)]
     df['Avg_Inner_Ratio'] = (df['R_12_MAIN'] + df['R_21_MAIN']) / 2.0
+    # Magritte's tau_main (post-fix) is the central-pixel (1,1) optical depth,
+    # i.e. the CENTRAL-CHORD tau -- the same quantity as Stutzki's Fig. 5/6
+    # x-axis (important_notes/mesh-comparison-and-fig56-2026-09-16.md sec 1).
+    df['tau_chord'] = df['tau_main']
     return df
+
+
+def eq11_on_chord_axis(tau_chord, component):
+    """eq11_thermal_ratio takes Stutzki's RADIAL tau (his tau_G, with 2 tau
+    in the emergent intensity), so on a central-chord axis evaluate it at
+    tau_chord / 2."""
+    return eq11_thermal_ratio(np.asarray(tau_chord) / 2.0, component)
 
 
 def load_escape1d(rates):
     df = pd.read_csv(ESCAPE1D_CSV[rates])
     df = df[df['converged'] & (df['tau_main'] > 0)]
     df['Avg_Inner_Ratio'] = (df['R_12'] + df['R_21']) / 2.0
+    # escape1d's tau_main is Stutzki's radial tau_G; its central chord is 2x.
+    df['tau_chord'] = 2.0 * df['tau_main']
     return df
 
 
@@ -129,7 +142,7 @@ def main():
     for rates, df in esc.items():
         print(f"escape1d {rates} fig56 curves: {len(df)} converged rows")
 
-    tau_ref = np.logspace(-2.2, 1.3, 300)
+    tau_ref = np.logspace(-2.2, 1.6, 300)
     summary_rows = []
 
     for obs_key, obs_title, mag_col_fixed, esc_col_fixed, eq11_comp, ylabel in OBSERVABLES:
@@ -140,8 +153,8 @@ def main():
         for i, T in enumerate(TEMPS):
             for j, log_n in enumerate(LOG_NS):
                 ax = axes[i, j]
-                mag_sub = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], log_n)].sort_values('tau_main')
-                esc_sub = {rates: df[np.isclose(df['T_k'], T) & np.isclose(df['log_n_H2'], log_n)].sort_values('tau_main')
+                mag_sub = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], log_n)].sort_values('tau_chord')
+                esc_sub = {rates: df[np.isclose(df['T_k'], T) & np.isclose(df['log_n_H2'], log_n)].sort_values('tau_chord')
                            for rates, df in esc.items()}
 
                 first_panel = (i == 0 and j == 0)
@@ -149,20 +162,20 @@ def main():
                     style = dict(ESCAPE1D_STYLE[rates])
                     if not first_panel:
                         style['label'] = None
-                    ax.plot(sub['tau_main'], sub[esc_col], **style)
-                ax.plot(mag_sub['tau_main'], mag_sub[mag_col], color='tab:red', lw=1.6,
+                    ax.plot(sub['tau_chord'], sub[esc_col], **style)
+                ax.plot(mag_sub['tau_chord'], mag_sub[mag_col], color='tab:red', lw=1.6,
                         marker='o', ms=4, label='Magritte 3D NLTE' if first_panel else None)
-                ax.plot(tau_ref, eq11_thermal_ratio(tau_ref, eq11_comp), color='black', lw=1.3,
+                ax.plot(tau_ref, eq11_on_chord_axis(tau_ref, eq11_comp), color='black', lw=1.3,
                         ls=':', alpha=0.7, label='Eq. (11), no anomaly' if first_panel else None)
 
-                resid_fo = interp_residual(mag_sub['tau_main'].values, mag_sub[mag_col].values,
-                                            esc_sub['full_original']['tau_main'].values,
+                resid_fo = interp_residual(mag_sub['tau_chord'].values, mag_sub[mag_col].values,
+                                            esc_sub['full_original']['tau_chord'].values,
                                             esc_sub['full_original'][esc_col].values)
-                resid_lo = interp_residual(mag_sub['tau_main'].values, mag_sub[mag_col].values,
-                                            esc_sub['loreau']['tau_main'].values,
+                resid_lo = interp_residual(mag_sub['tau_chord'].values, mag_sub[mag_col].values,
+                                            esc_sub['loreau']['tau_chord'].values,
                                             esc_sub['loreau'][esc_col].values)
-                resid_rates = interp_residual(esc_sub['loreau']['tau_main'].values, esc_sub['loreau'][esc_col].values,
-                                               esc_sub['full_original']['tau_main'].values,
+                resid_rates = interp_residual(esc_sub['loreau']['tau_chord'].values, esc_sub['loreau'][esc_col].values,
+                                               esc_sub['full_original']['tau_chord'].values,
                                                esc_sub['full_original'][esc_col].values)
 
                 med_fo, max_fo, n_fo = summarize_residual(resid_fo)
@@ -183,7 +196,7 @@ def main():
                 ax.set_ylim(0.0, 1.05)
                 ax.grid(True, which='both', ls='--', alpha=0.25)
                 if i == 2:
-                    ax.set_xlabel(r'$\tau(\Delta F_1=0)$')
+                    ax.set_xlabel(r'central-chord $\tau(\Delta F_1=0)$')
                 if j == 0:
                     ax.set_ylabel(ylabel, fontsize=9)
 

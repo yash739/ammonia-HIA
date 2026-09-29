@@ -1281,3 +1281,48 @@ accordingly (Overleaf).
 Also this session: `output_lut_combined/` and `output_lut_offset/` moved
 to `scratch/output/` (strict subsets of gold); `output_lut_coarse/` kept
 only because it holds the superseded coarse noise-recovery summary.
+
+## 20. CORRECTION to sec 15: the Fig 5/6 comparison mixed two tau conventions (09-29)
+
+`compare_fig5_6_direct.py` / `compare_fig5_6_overlay.py` (sec 15, and the
+8-density update) plotted Magritte's `tau_main` and escape1d's `tau_main`
+on one x-axis and drew Eq. (11) as `eq11_thermal_ratio(tau)`. But per
+`mesh-comparison-and-fig56-2026-09-16.md` sec 1:
+- Stutzki's Fig. 5/6 x-axis is the CENTRAL-CHORD tau;
+- Magritte's (post-fix) `tau_main` is the central-pixel (1,1) tau = chord;
+- escape1d's `tau_main` is Stutzki's RADIAL tau_G (2 tau in the emergent
+  intensity), so its chord is 2x;
+- `eq11_thermal_ratio` takes radial tau, so on a chord axis it must be
+  evaluated at tau/2.
+Fixed: both scripts now put everything on the chord axis (escape1d at
+2*tau_G, Eq. 11 via `eq11_on_chord_axis`). Sanity check that the fix is
+right: escape1d's inner-satellite curves (almost anomaly-free) now sit on
+Eq. (11) exactly, as they must.
+
+**What changes.** At matched (T, n, N/dv), Magritte's reported chord tau
+is ~0.4x escape1d's RADIAL tau (median 0.39-0.42) -- which is why the
+wrong axis produced a spuriously close match (median inner residual
+0.013-0.019). On the correct axis, Magritte's curves run ~2x in tau ahead
+of both escape1d and Eq. (11), INCLUDING the near-LTE inner satellites --
+i.e. the gap is dominated by the cube mesh under-reporting central tau
+(~half, 09-16 notes sec 2), not by radiative-transfer physics. Corrected
+median |residual| (Stutzki's rates): inner 0.06-0.34, outer 1->0
+0.03-0.09, outer 0->1 0.13-0.60 across the 8 densities
+(`residual_summary_8dens.csv`).
+
+**Retracted:** sec 15's "Magritte tracks escape1d closely" and "outer-
+satellite anomaly amplitude is more sensitive to the radiative-transfer
+method than to the rates" -- both rested on the mismatched axis. Not
+retracted: escape1d with Loreau rates still diverges into masing at
+intermediate density (that's within one model). A fair Magritte-vs-
+escape1d comparison on a tau axis needs Magritte's tau corrected for the
+cube-mesh deficit (or a radial-mesh fig56 run); until then compare at
+matched (T, n, N/dv) instead of matched tau.
+
+**Magritte-only plots (new, `w33/plot_fig56_magritte.py`):**
+`fig5_6_magritte_8dens.png` (Stutzki's layout, 8 densities, chord axis,
+Eq. 11 at tau/2) and `fig5_6_magritte_T18_on_scanned_page.png` (T=18 K,
+his three densities drawn on the scanned page). On his page our curves
+match his in shape but sit left of his by ~2-3x in tau, consistent with
+the cube-mesh tau deficit. The stale coarse-LUT fig5/6_reproduction.png
+(wrong-line tau_main, pre-fix) moved to scratch/plots/stale_fig56_coarse/.
