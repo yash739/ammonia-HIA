@@ -32,6 +32,11 @@ import grid
 import rate_swap_transcribed as rst_full
 from build_escape_grid import outdir_for
 
+# Stutzki's own three Fig. 5/6 densities plus the 0.5-dex fill-in used by
+# the expanded Magritte fig56 grid (w33/build_lut_fig56.py), so every
+# Magritte density has a matching escape1d curve.
+LOG_N_H2_LIST = (3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0)
+
 CMAT_BUILDERS = {
     'loreau': lambda model, T: model.collision_matrix(T),
     'full_original': rst_full.build_complete_original_collision_matrix,
@@ -48,7 +53,7 @@ def run(rates):
 
     t0 = time.time()
     df = grid.compute_fig56_curves(
-        model, Cmat_builder=CMAT_BUILDERS[rates],
+        model, log_n_h2_list=LOG_N_H2_LIST, Cmat_builder=CMAT_BUILDERS[rates],
         solver_kwargs={'guard_masers': False})
     print(f"Fig5/6 escape1d ({rates} rates, Stutzki's own exact params): "
           f"{len(df)} points in {time.time()-t0:.1f}s, "
