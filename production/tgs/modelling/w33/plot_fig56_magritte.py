@@ -28,6 +28,29 @@ from compare_fig5_6_direct import load_magritte, eq11_on_chord_axis, OUTDIR, TEM
 import plot_fig56_overlay as ov
 
 LOG_NS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
+# LTE (max_NLTE=0) reference runs from fig56_slice.py at the fig56 grid's own
+# settings (pad 1.15, 16x16, nrays 12, resolution 10), cube and radial mesh.
+# The cube LTE curve is the no-anomaly baseline ON THE SAME MESH as the NLTE
+# curves, so it carries the same factor-of-two tau deficit; the radial LTE
+# curve lies on Eq. (11).
+LTE_REF_CSV = '/home/yasho379/magritte_rebuilt/scratch/output/fig56_lte_ref/slice_lte.csv'
+LTE_COLS = {'R_01_MAIN': ('disc_fit_R01',), 'R_10_MAIN': ('disc_fit_R10',),
+            'Avg_Inner_Ratio': ('disc_fit_R12', 'disc_fit_R21')}
+LTE_STYLE = {'cube': dict(color='0.35', ls='-', lw=2.6, alpha=0.55),
+             'radial': dict(color='crimson', ls=':', lw=1.8)}
+
+
+def load_lte_ref():
+    if not os.path.exists(LTE_REF_CSV):
+        return None
+    d = pd.read_csv(LTE_REF_CSV)
+    d = d[(d['Status'] == 'SUCCESS') & (d['mode'] == 'lte')]
+    return d.sort_values('tau11_chord')
+
+
+def lte_curve(lte, mesh, T, col):
+    g = lte[(lte['mesh'] == mesh) & np.isclose(lte['T_cloud'], T)]
+    return g['tau11_chord'].values, g[list(LTE_COLS[col])].mean(axis=1).values
 STUTZKI_NS = {3.5, 5.0, 7.0}
 OBSERVABLES = [
     (r'$F_1=0\to1$ (outer)', 'R_01_MAIN', 'outer'),
@@ -36,7 +59,7 @@ OBSERVABLES = [
 ]
 
 
-def clean_axes_figure(mag):
+def clean_axes_figure(mag, lte=None):
     cmap = plt.get_cmap('viridis')
     colors = {n: cmap(i / (len(LOG_NS) - 1)) for i, n in enumerate(LOG_NS)}
     tau_ref = np.logspace(-2.2, 1.6, 300)
@@ -45,6 +68,10 @@ def clean_axes_figure(mag):
         for j, (title, col, comp) in enumerate(OBSERVABLES):
             ax = axes[i, j]
             ax.plot(tau_ref, eq11_on_chord_axis(tau_ref, comp), color='black', ls='--', lw=1.2)
+            if lte is not None:
+                for mesh in ('cube', 'radial'):
+                    x, y = lte_curve(lte, mesh, T, col)
+                    ax.plot(x, y, zorder=1, **LTE_STYLE[mesh])
             for n in LOG_NS:
                 g = mag[np.isclose(mag['T_cloud'], T) & np.isclose(mag['log_n_H2'], n)].sort_values('tau_chord')
                 ax.plot(g['tau_chord'], g[col], color=colors[n], lw=2.0 if n in STUTZKI_NS else 1.0,
@@ -61,6 +88,9 @@ def clean_axes_figure(mag):
     handles = [Line2D([], [], color=colors[n], lw=2.0 if n in STUTZKI_NS else 1.0, marker='o', ms=3.5,
                       label=f"log n' = {n:.1f}" + (' (Stutzki)' if n in STUTZKI_NS else ''))
                for n in LOG_NS] + [Line2D([], [], color='black', ls='--', label='Eq. (11), no anomaly')]
+    if lte is not None:
+        handles += [Line2D([], [], label='LTE, cube mesh (same mesh as NLTE)', **LTE_STYLE['cube']),
+                    Line2D([], [], label='LTE, radial mesh', **LTE_STYLE['radial'])]
     fig.legend(handles=handles, loc='upper center', ncol=5, fontsize=9, bbox_to_anchor=(0.5, 1.0))
     fig.suptitle('Stutzki & Winnewisser (1985) Figs. 5-6 reproduced with Magritte 3D NLTE '
                  '(Loreau et al. 2023 rates, cube mesh), 8 densities', y=1.04, fontsize=12)
@@ -102,5 +132,5 @@ def scanned_page_figure(mag):
 
 if __name__ == '__main__':
     mag = load_magritte()
-    clean_axes_figure(mag)
+    clean_axes_figure(mag, load_lte_ref())
     scanned_page_figure(mag)
