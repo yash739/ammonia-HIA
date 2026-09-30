@@ -1,0 +1,16 @@
+[project]
+name = "nh3hia"
+version = "0.1.0"
+description = "3D non-LTE and 1D escape-probability modelling of NH3 (1,1) hyperfine intensity anomalies (revisiting Stutzki & Winnewisser 1985)"
+requires-python = ">=3.9"
+dependencies = ["numpy", "scipy", "pandas", "matplotlib", "astropy", "healpy"]
+# Magritte (the 3D radiative-transfer engine) is vendored at <repo>/Magritte/
+# and installed separately (editable install); see README.md.
+
+[tool.setuptools.packages.find]
+include = ["nh3hia*", "analysis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = ["archive"]

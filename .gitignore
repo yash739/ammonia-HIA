@@ -11,8 +11,8 @@
 *.fits
 # Exception: curated observed-data CSVs (small, human-digitized, not bulk
 # generated output) should be tracked despite the blanket *.csv rule above.
-!tgs/modelling/w33/observed_data/*.csv
-!production/tgs/modelling/w33/observed_data/*.csv
+
+!production/tgs/modelling/data/observed/*.csv
 
 # Disposable scratch workspace (272G+ of one-off diagnostics/benchmarks) --
 # never meant to be tracked, see important_notes/ for what's worth keeping.

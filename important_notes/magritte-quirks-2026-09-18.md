@@ -1326,3 +1326,32 @@ his three densities drawn on the scanned page). On his page our curves
 match his in shape but sit left of his by ~2-3x in tau, consistent with
 the cube-mesh tau deficit. The stale coarse-LUT fig5/6_reproduction.png
 (wrong-line tau_main, pre-fix) moved to scratch/plots/stale_fig56_coarse/.
+
+## 21. Fig. 5/6 LTE reference lines; verification table rebuilt; code reorganised (09-30)
+
+**LTE reference lines on the Magritte Fig. 5/6 figure.** Ran LTE
+(`max_NLTE=0`) models at the fig56 grid's own settings (cube mesh, pad 1.15,
+16x16, nrays 12, resolution 10; T = 18/26/36 K, n = 10^7, log N/dv
+13.5-16.7) on both the cube and radial meshes (`scratch/output/fig56_lte_ref/`,
+via `analysis.grids.fig56_slice --mode lte`). The radial LTE curve lies on
+Eq. (11); the cube LTE curve lies ~2x to its left, as expected from the
+cube's half-tau deficit (radial tau ~2x cube at every column). On the figure
+the near-LTE inner satellites fall on the cube LTE line at all eight
+densities, and the outer satellites depart from it in opposite directions
+(0->1 above, 1->0 below). So the offset from Eq. (11) is the mesh, and the
+offset from the same-mesh LTE line is the anomaly. Paper figure and text
+updated (Overleaf `70ef564`).
+
+**Paper I verification table rebuilt** from the fig56 grid at T = 26 K,
+log N/dv = 14.9, log n = 7/6/5/4: HIA_IS 0.934/0.921/0.916/0.903, HIA_OS
+1.420/1.605/1.655/1.693. The old three one-off models (mixed T, unrecorded
+columns, wrong-line tau) were dropped. Overleaf `bfdb44e`.
+
+**Code reorganised** into `production/tgs/modelling/{nh3hia,analysis,tests,
+data,archive}`: library vs runnable analyses, absolute package imports (no
+sys.path hacks), all paths via `nh3hia.paths`, superseded code in
+`archive/`. **Script names in sections 1-20 of these notes are the OLD
+names;** `production/tgs/modelling/README.md` has the old-to-new table. The
+partial `--rates original` set was retired from the code (no outputs of it
+existed on disk). New: `analysis.validation.quadrant_check` (regenerates the
+paper's quadrant-check data, previously an inline one-off).
