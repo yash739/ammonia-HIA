@@ -26,3 +26,8 @@ FIG56_LOG_NDV_AXIS = LOG_NDV_AXIS
 # the extension rows go into the same gold CSV and the interpolator picks
 # them up automatically. Full gold density axis = LOG_N_AXIS + LOG_N_EXT_AXIS.
 LOG_N_EXT_AXIS = [8.0, 8.5]
+
+# Column-ceiling extension (2026-10-01): with the density ceiling at 8.5, both
+# W33 sources pinned at log N/dv = 15.8. Full cross product with every density
+# (LOG_N_AXIS + LOG_N_EXT_AXIS) and temperature, so the grid stays rectangular.
+LOG_NDV_EXT_AXIS = [16.025, 16.25]

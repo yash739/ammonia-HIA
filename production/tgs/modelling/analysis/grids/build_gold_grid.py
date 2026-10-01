@@ -35,14 +35,14 @@ import os
 
 import nh3hia.lut.build as b
 from nh3hia import paths
-from nh3hia.lut.axes import LOG_N_AXIS, LOG_N_EXT_AXIS, T_AXIS, LOG_NDV_AXIS
+from nh3hia.lut.axes import LOG_N_AXIS, LOG_N_EXT_AXIS, T_AXIS, LOG_NDV_AXIS, LOG_NDV_EXT_AXIS
 
 GOLD_ODIR = os.path.join(paths.LUT_GOLD, '')
 
 
-def gold_points(log_n_axis=LOG_N_AXIS):
+def gold_points(log_n_axis=LOG_N_AXIS, log_ndv_axis=LOG_NDV_AXIS):
     return [(float(a), float(bb), float(c))
-            for a in log_n_axis for bb in T_AXIS for c in LOG_NDV_AXIS]
+            for a in log_n_axis for bb in T_AXIS for c in log_ndv_axis]
 
 
 if __name__ == '__main__':
@@ -51,14 +51,20 @@ if __name__ == '__main__':
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--dv', type=float, default=b.REFERENCE_DV_KMS)
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--column-ext', action='store_true',
+                    help='build only the column-ceiling extension (log N/dv = 16.025, 16.25) '
+                         'at every density incl. the ceiling extension, into the same gold table')
     ap.add_argument('--ceiling-ext', action='store_true',
                     help='build only the density-ceiling extension (log n = 8.0, 8.5) '
                          'into the same gold table')
     a = ap.parse_args()
 
-    pts = gold_points(LOG_N_EXT_AXIS if a.ceiling_ext else LOG_N_AXIS)
+    if a.column_ext:
+        pts = gold_points(LOG_N_AXIS + LOG_N_EXT_AXIS, LOG_NDV_EXT_AXIS)
+    else:
+        pts = gold_points(LOG_N_EXT_AXIS if a.ceiling_ext else LOG_N_AXIS)
     print(f"gold grid: {len(pts)} total cross-product points "
-          f"({len(pts) // (len(T_AXIS) * len(LOG_NDV_AXIS))} density x {len(T_AXIS)} T x {len(LOG_NDV_AXIS)} log_N_dv)")
+          f"({len({p[0] for p in pts})} density x {len({p[1] for p in pts})} T x {len({p[2] for p in pts})} log_N_dv)")
 
     b.build(odir=GOLD_ODIR, processes=a.processes, dv_kms=a.dv,
             limit=a.limit, dry_run=a.dry_run, points=pts)
