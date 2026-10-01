@@ -19,3 +19,10 @@ LOG_NDV_AXIS = [14.0, 14.225, 14.45, 14.675, 14.9, 15.125, 15.35, 15.575, 15.8]
 FIG56_LOG_N_AXIS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
 FIG56_T_AXIS = [18.0, 26.0, 36.0]
 FIG56_LOG_NDV_AXIS = LOG_NDV_AXIS
+
+# Density-ceiling extension of the gold grid (2026-09-30): retrievals at W33
+# and several Stutzki positions sat on log n = 7.5. Kept as a separate list
+# so the 1D grids (which take their range from LOG_N_AXIS) are unaffected;
+# the extension rows go into the same gold CSV and the interpolator picks
+# them up automatically. Full gold density axis = LOG_N_AXIS + LOG_N_EXT_AXIS.
+LOG_N_EXT_AXIS = [8.0, 8.5]

@@ -99,7 +99,7 @@ def contour_panel(fig, ax, df_T, col, title, cmap, is_ratio=True, vmin=None, vma
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default='loreau')
+    ap.add_argument('--rates', choices=['loreau', 's85'], default='loreau')
     ap.add_argument('--grid', default=None, help='override the grid path implied by --rates')
     ap.add_argument('--out', default=None, help='override the output path implied by --rates')
     ap.add_argument('--temps', default=None, help='comma-separated T_cloud list; default is the 4 Stutzki panel temps')

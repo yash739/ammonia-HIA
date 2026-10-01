@@ -35,7 +35,7 @@ def summary_path(rates, dv):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default='loreau')
+    ap.add_argument('--rates', choices=['loreau', 's85'], default='loreau')
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
 

@@ -24,11 +24,9 @@ Deviations from a literal reading of stutzki_model_1985.md / the paper, and why:
   the near-empty highest level's equation to be the normalization constraint
   produces a poorly conditioned matrix at low T_k where level 36 (E~139 K) is
   essentially unpopulated.
-* Grouping is computed once from the actual pairwise velocity separation of
-  all 77 transitions (union via connected components), not hand-coded per the
-  FIR special case the plan describes -- the 0.3 km/s criterion reproduces the
-  paper's "12 overlapping groups + 28 single lines" structure on its own, and
-  this is checked at load time (see `assert_expected_grouping`).
+* Grouping follows S85's explicit description (see `s85_group_ids`) rather
+  than a velocity threshold; `assert_expected_grouping` checks the paper's
+  "12 overlapping groups + 28 single lines".
 * Radius R and an explicit NH3 abundance never appear. k_t*R in the paper's
   Eq. (3)-(4) only ever occurs multiplied by volume level populations, and
   n_level(volume)*R = fractional_level_population * N_NH3(column) for a
@@ -38,6 +36,24 @@ Deviations from a literal reading of stutzki_model_1985.md / the paper, and why:
   or an abundance. This is mathematically identical to the paper's formula,
   just algebraically simplified to avoid introducing a free radius/abundance
   that immediately cancels.
+
+Corrections of 2026-09-30 (audit in important_notes/magritte-quirks-2026-09-18.md
+sec. 22), all bringing the model closer to the paper as written:
+
+* Hyperfine grouping follows S85 Sects. 2-3 explicitly (12 overlapping groups
+  + 28 single lines): each inversion line's Delta F1=0 components overlap and
+  its four satellites are single; in the (2,1)->(1,1) far-IR bands the main
+  line and inner satellites overlap while BOTH outer satellites (F1=1->0 and
+  F1=2->1) are single; the higher far-IR bands are one group each. The
+  earlier velocity-threshold clustering chained F1=2->1 into the main group
+  and all seven (3,2) inversion components into one.
+* beta(tau) for tau < 0 is S85's Eq. (4) continued literally (beta > 1,
+  amplification of the background), not clamped to 1. The clamp switched off
+  maser saturation and let the (1,1) F1=0->1 inversion run away.
+* The clump linewidth (0.3 km/s) is a FWHM; the profile's equivalent width
+  Delta v_t of Eq. (2)-(3) is FWHM * sqrt(pi) / (2 sqrt(ln 2)) = 1.0645 FWHM.
+  With this convention the model reproduces S85's T_B,theor at their Table 1a
+  fits to 0.7% (median).
 
 Collision rates are Loreau et al. (2023) NH3-H2 rates (read directly from
 tgs/modelling/p-nh3@loreau.dat.txt), not Stutzki & Winnewisser's own 1985
@@ -55,7 +71,6 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.integrate import quad
 from scipy.optimize import root
-from scipy.sparse.csgraph import connected_components
 
 from nh3hia import paths
 
@@ -116,20 +131,32 @@ def _parse_qn(qn_str):
     return J, K, sym, F1
 
 
-def _split_fir_outer_satellite(group_id, n_groups, u_idx, l_idx, qn):
-    """Force the (2,1)->(1,1) FIR outer satellite (F1_upper=1 -> F1_lower=0,
-    the only such pair the selection rules allow, at ~1168 and ~1215 GHz) into
-    its own singleton group, undoing the velocity-threshold chain-merge --
-    see the caller's comment for why."""
-    group_id = group_id.copy()
-    next_id = n_groups
+FWHM_TO_EQUIV_WIDTH = np.sqrt(np.pi) / (2.0 * np.sqrt(np.log(2.0)))  # 1.0645
+
+
+def s85_group_ids(u_idx, l_idx, qn):
+    """Overlap groups exactly as Stutzki & Winnewisser (1985) Sects. 2-3
+    describe them (12 overlapping groups + 28 single lines for 77 transitions):
+
+    * inversion lines (J,K)->(J,K): the Delta F1 = 0 components overlap (one
+      group per line); the four Delta F1 = +-1 satellites are single;
+    * far-IR (2,1)->(1,1), each parity band separately: the main line and the
+      inner satellites overlap; the outer satellites F1=1->0 and F1=2->1 are
+      single ("do not overlap with the inner satellites", Sect. 2);
+    * the higher far-IR bands ((3,1)->(2,1), (3,2)->(2,2)): one group per band.
+    """
+    keys, ids = {}, np.empty(len(u_idx), dtype=int)
     for t in range(len(u_idx)):
-        Ju, Ku, _, F1u = qn[u_idx[t]]
-        Jl, Kl, _, F1l = qn[l_idx[t]]
-        if Ju == 2 and Ku == 1 and Jl == 1 and Kl == 1 and F1u == 1 and F1l == 0:
-            group_id[t] = next_id
-            next_id += 1
-    return next_id, group_id
+        Ju, Ku, su, F1u = qn[u_idx[t]]
+        Jl, Kl, sl, F1l = qn[l_idx[t]]
+        if (Ju, Ku) == (Jl, Kl):
+            key = ('inv', Ju, Ku) if F1u == F1l else ('single', t)
+        elif (Ju, Ku, Jl, Kl) == (2, 1, 1, 1) and (F1u, F1l) in ((1, 0), (2, 1)):
+            key = ('single', t)
+        else:
+            key = ('fir', Ju, Ku, Jl, Kl, su)
+        ids[t] = keys.setdefault(key, len(keys))
+    return len(keys), ids
 
 
 class NH3Model:
@@ -178,29 +205,12 @@ class NH3Model:
         self.B_ul = C_CM_S ** 2 / (2 * H_ERG_S * self.nu_Hz ** 3) * self.A_ul
         self.B_lu = (gu / gl) * self.B_ul
 
-        # ---- Phase 2.1: hyperfine overlap grouping via connected components
-        dv_kms = np.abs(self.nu_Hz[:, None] - self.nu_Hz[None, :]) / self.nu_Hz[:, None] * C_CM_S / 1e5
-        adjacency = dv_kms < dv_clump_kms
-        np.fill_diagonal(adjacency, True)
-        n_groups, group_id = connected_components(adjacency, directed=False)
-
-        # Paper Sect. 3 (p.16), explicit special case: "we ... treated the
-        # inner satellites and the main line of the IR (2,1)->(1,1)
-        # transition as a group of lines with equal frequency, whereas the
-        # outer satellites where treated as separate lines." The plain
-        # velocity criterion above chain-merges that outer component (F1=1->0,
-        # the transition farthest from the (2,1)->(1,1) manifold's own mean
-        # frequency) into the same group as the main+inner cluster anyway,
-        # since its neighbours in frequency are each <0.3 km/s apart even
-        # though the two extremes of the manifold are ~0.65 km/s apart --
-        # override that chaining for exactly this transition, matching the
-        # paper's own explicit treatment.
-        n_groups, group_id = _split_fir_outer_satellite(
-            group_id, n_groups, self.u_idx, self.l_idx, self.qn)
-
+        # ---- hyperfine overlap groups, S85's explicit scheme (see s85_group_ids)
+        n_groups, group_id = s85_group_ids(self.u_idx, self.l_idx, self.qn)
         self.group_id = group_id
         self.n_groups = n_groups
-        self.dv_clump_kms = dv_clump_kms
+        self.dv_clump_kms = dv_clump_kms                          # FWHM
+        self.dv_equiv_kms = dv_clump_kms * FWHM_TO_EQUIV_WIDTH    # Delta v_t of Eq. (2)-(3)
 
         group_sizes = np.bincount(group_id, minlength=n_groups)
         self.n_single_groups = int(np.sum(group_sizes == 1))
@@ -299,32 +309,17 @@ class NH3Model:
 
 
 def assert_expected_grouping(model):
-    """Structural sanity checks. The paper (Sect. 3, p.16) reports "12
-    overlapping groups and 28 single lines" from the same 77 transitions;
-    our pure velocity-threshold clustering (plus the explicit FIR-outer-
-    satellite override above) lands close but not identical to that exact
-    split for the higher-(J,K) manifolds the paper doesn't discuss in detail
-    (e.g. (3,1)->(2,1), (3,2)->(2,2) near 1.7-1.8 THz) -- those levels are
-    only weakly populated over T_k=18-40K (paper Sect. 3: "higher levels
-    show only very low population... even the (4,4) level only has minor
-    influence"), so small differences there have a second-order effect on
-    the (1,1)/(2,2) populations this module actually reports. What DOES
-    matter for Figs 4-6 is verified exactly: the (1,1) main line is its own
-    group containing both its near-degenerate Delta F1=0 transitions, the
-    four (1,1) satellites and the (2,2) main line are each isolated into
-    their own single-transition group, and the FIR outer satellite is
-    correctly split out (checked directly by NH3Model._assign_named_groups
-    raising if any of these is ambiguous)."""
+    """S85 Sect. 3: the 77 radiative transitions form 12 overlapping groups and
+    28 single lines; the named (1,1)/(2,2)/(2,1) groups are unambiguous."""
     assert len(model.u_idx) == 77, len(model.u_idx)
+    assert model.n_overlap_groups == 12 and model.n_single_groups == 28, (
+        model.n_overlap_groups, model.n_single_groups)
     assert set(model.named_groups.keys()) == {
         'main_11', 'outer_01', 'outer_10', 'inner_12', 'inner_21', 'main_22', 'main_21'}
-    main_size = np.sum(model.group_id == model.named_groups['main_11'])
-    assert main_size == 2, main_size
-    main21_size = np.sum(model.group_id == model.named_groups['main_21'])
-    assert main21_size == 3, main21_size  # verified directly: 3 Delta F1=0 transitions overlap here
+    assert np.sum(model.group_id == model.named_groups['main_11']) == 2
+    assert np.sum(model.group_id == model.named_groups['main_21']) == 3
     for key in ('outer_01', 'outer_10', 'inner_12', 'inner_21'):
-        size = np.sum(model.group_id == model.named_groups[key])
-        assert size == 1, (key, size)
+        assert np.sum(model.group_id == model.named_groups[key]) == 1, key
 
 
 # ---------------------------------------------------------------------------
@@ -339,11 +334,14 @@ def _beta_integral(tau):
 
 
 class BetaSpline:
-    """beta(tau) = (1/sqrt(pi)) INT exp(-z^2) exp(-tau exp(-z^2)) dz, tabulated
-    over log10(tau) in [-8, 8] (wider than the plan's [-4,4] so the very high
-    tau of the FIR (2,1)->(1,1) transitions -- deliberately not the physics
-    of interest, per the paper's own Sect. 3, but still needed for a stable
-    J_t -- stays inside the spline domain instead of being clamped)."""
+    """beta(tau) = (1/sqrt(pi)) INT exp(-z^2) exp(-tau exp(-z^2)) dz  (S85 Eq. 4).
+
+    tau >= 0: tabulated over log10(tau) in [-8, 8] (the far-IR (2,1)->(1,1)
+    groups reach very high tau). tau < 0 (population-inverted group): the same
+    integral continued literally, beta > 1 -- the escape probability becomes an
+    amplification factor and J_t = F beta + S (1 - beta) stays positive (S < 0).
+    Tabulated as log(beta) over |tau| in [0, NEG_TAU_MAX]."""
+    NEG_TAU_MAX = 80.0
 
     def __init__(self, log10_tau_min=-8.0, log10_tau_max=8.0, n=400):
         log_tau = np.linspace(log10_tau_min, log10_tau_max, n)
@@ -351,11 +349,17 @@ class BetaSpline:
         beta = np.array([_beta_integral(t) for t in tau])
         self._spline = CubicSpline(log_tau, beta)
         self._lo, self._hi = log10_tau_min, log10_tau_max
+        t_neg = np.linspace(0.0, self.NEG_TAU_MAX, 801)
+        b_neg = np.array([quad(lambda z, t=t: np.exp(-z * z + t * np.exp(-z * z)), -9.0, 9.0,
+                               limit=200)[0] / np.sqrt(np.pi) for t in t_neg])
+        self._neg_spline = CubicSpline(t_neg, np.log(b_neg))
 
     def __call__(self, tau):
         tau = np.asarray(tau, dtype=float)
         log_tau = np.log10(np.clip(np.abs(tau), 10.0 ** self._lo, 10.0 ** self._hi))
-        return np.clip(self._spline(log_tau), 0.0, 1.0)
+        pos = np.clip(self._spline(log_tau), 0.0, 1.0)
+        neg = np.exp(self._neg_spline(np.clip(-tau, 0.0, self.NEG_TAU_MAX)))
+        return np.where(tau >= 0, pos, neg)
 
 
 _beta_spline_singleton = None
@@ -427,7 +431,7 @@ def _build_residual_fn(model, Cmat, T_k, n_H2, N_NH3_total, T_bg):
     n_groups = model.n_groups
     gu, gl = model.g[u], model.g[l]
 
-    dnu = nu * (model.dv_clump_kms * 1e5 / C_CM_S)
+    dnu = nu * (model.dv_equiv_kms * 1e5 / C_CM_S)   # Delta v_t, Eq. (3)
     prefac = H_ERG_S * (nu / dnu) / (4.0 * np.pi)  # erg*s, per transition
     F_nu_t = planck_specific_intensity(nu, T_bg)
 
@@ -445,41 +449,18 @@ def _build_residual_fn(model, Cmat, T_k, n_H2, N_NH3_total, T_bg):
         den = np.bincount(gid, weights=k_t, minlength=n_groups)
         S_G = np.divide(num, den, out=np.zeros_like(num), where=np.abs(den) > 1e-300)
 
-        # beta(tau) evaluated at max(tau_G, 0), NOT abs(tau_G): a group that
-        # goes population-inverted (tau_G<0) is treated as fully optically
-        # thin (beta=1, so J_t collapses to the background only) rather than
-        # as "equally trapped as its positive-tau mirror image". The abs()
-        # version (still what BetaSpline.__call__ does on its own, used only
-        # for the post-hoc emergent-brightness/diagnostic path, never here)
-        # let S_G's contribution back into J_t with a large (1-beta) weight
-        # whenever |tau_G| was sizeable, which can make B_ul*J_t/B_lu*J_t --
-        # meant to be non-negative RATE COEFFICIENTS in the master equation
-        # -- come out negative once S_G is strongly negative (a real,
-        # reproduced failure mode here: for the (1,1) F1=0->1 transition at
-        # T=36K, n_H2=1e5, N/dv=1e15, A_ul+B_ul*J_t came out to -1.9e-7 s^-1,
-        # i.e. an outright negative decay rate). Clamping at 0 here removes
-        # that specific unphysical pathway; it does NOT remove the
-        # population inversion itself -- checked directly: forcing this same
-        # clamp still converges to essentially the same inverted populations
-        # (x_u/g_u > x_l/g_l for the affected level, not merely tau_G<0),
-        # and a level-by-level gain/loss accounting shows the (2,1)->(1,1)
-        # FIR pumping rate into the affected sublevel alone exceeds its
-        # ENTIRE loss budget (radiative + all collisional channels combined)
-        # by a factor of several, so the inversion is not an artifact of
-        # this term -- but leaving rate coefficients that can go negative in
-        # the production solver is wrong regardless of whether it changes
-        # this particular answer.
-        beta_G = beta_spline(np.clip(tau_G, 0.0, None))
+        # S85 Eq. (4) at the group's own tau_G, including tau_G < 0 (beta > 1).
+        beta_G = beta_spline(tau_G)
         J_t = F_nu_t * beta_G[gid] + S_G[gid] * (1.0 - beta_G[gid])
         return tau_G, S_G, J_t
 
     def residual(x):
         _, _, J_t = intermediates(x)
-        # Hard floor at 0, independent of the beta clamp above: a rate
-        # coefficient entering a master equation must never be negative,
-        # and this is cheap insurance against any remaining path (e.g. a
-        # nominally tau_G>=0 group whose pooled S_G is still very negative)
-        # that the clamp in intermediates() doesn't already rule out.
+        # Hard floor at 0: a rate coefficient entering a master equation
+        # must never be negative. With Eq. (4) continued to tau < 0 the mean
+        # intensity stays positive for an inverted group, so this should not
+        # bind; it guards against any remaining path (e.g. a group with
+        # tau_G >= 0 whose pooled S_G is negative).
         decay_rate = np.clip(A_ul + B_ul * J_t, 0.0, None)
         excite_rate = np.clip(B_lu * J_t, 0.0, None)
         Q = n_H2 * Cmat.copy()

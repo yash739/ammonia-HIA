@@ -78,7 +78,7 @@ def extend_one_decade(rates, n_T=50, n_log_ndv=36):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default='loreau')
+    ap.add_argument('--rates', choices=['loreau', 's85'], default='loreau')
     a = ap.parse_args()
     extend_one_decade(a.rates)
 

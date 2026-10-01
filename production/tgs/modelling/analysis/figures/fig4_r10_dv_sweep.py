@@ -43,11 +43,11 @@ def load_grid(rates, dv):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default=None,
+    ap.add_argument('--rates', choices=['loreau', 's85'], default=None,
                     help='default: run both, one figure each')
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
-    rates_list = [a.rates] if a.rates else ['loreau', 'full_original']
+    rates_list = [a.rates] if a.rates else ['loreau', 's85']
 
     for rates in rates_list:
         dfs = {dv: load_grid(rates, dv) for dv in DVS}

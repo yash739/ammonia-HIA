@@ -57,7 +57,7 @@ def load_grid(path):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default='loreau')
+    ap.add_argument('--rates', choices=['loreau', 's85'], default='loreau')
     ap.add_argument('--grid', default=None, help='override the grid path implied by --rates')
     ap.add_argument('--dv', type=float, default=None,
                     help='clump linewidth (km/s) selecting which --dv-tagged grid/output dir to '

@@ -29,22 +29,19 @@ from nh3hia.lut.axes import LOG_N_AXIS, T_AXIS, LOG_NDV_AXIS
 from nh3hia import paths
 
 BASE_OUTDIR = paths.PRODUCTION + "/output_escape1d/"
-# 'loreau' = hyperfine-resolved NH3-H2 rates (Loreau et al. 2023), the
-# default throughout this project. 'full_original' = Stutzki & Winnewisser's
-# own 1985 rates via the complete transcription of Green (1980) Table III x
-# Stutzki's Table 1 (nh3hia/escape1d/rates_stutzki.py, built from the CSVs in
-# production/references/) -- 95% of the off-diagonal entries among the six
-# tracked manifolds are Stutzki-sourced; only 443U/444U's outgoing pathways
-# fall back to Loreau (nothing higher than (4,4) exists in this scheme for
-# them to excite into, so that fallback is expected, not a gap).
-# (A third, partial reconstruction called 'original' was retired on
-# 2026-09-24; its code is in archive/escape1d_early/rate_swap_full.py.)
+# 'loreau' = hyperfine-resolved NH3-H2 rates (Loreau et al. 2023), density
+# axis n_H2. 's85' = Stutzki & Winnewisser's own 1985 rates (Green 1980 Table
+# III x S85a Tables 1-2; nh3hia/escape1d/rates_stutzki.py), every entry
+# S85-sourced, used as NH3-He rates with S85's density n' on the axis.
 RATES_DIRNAME = {'loreau': 'results_loreau_rates',
-                 'full_original': 'results_full_original_rates'}
+                 's85': 'results_s85_rates'}
 RATES_FN = {
     'loreau': lambda model, T: model.collision_matrix(T),
-    'full_original': rst_full.build_complete_original_collision_matrix,
+    's85': rst_full.build_s85_collision_matrix,
 }
+# Density axis per rate set: 'loreau' -> n_H2; 's85' -> S85's n' (He rates
+# used as-is, as S85 did; n_H2 = n'/1.75). See rates_stutzki's docstring.
+DENSITY_AXIS = {'loreau': 'n_H2', 's85': "n'"}
 
 
 def outdir_for(rates, dv_kms=None):
@@ -81,7 +78,10 @@ def compute_grid(log_n_vals, T_vals, log_ndv_vals, out_csv, collision_matrix_fn=
     collision_matrix_fn = collision_matrix_fn or RATES_FN['loreau']
     dv_clump_kms = DV_CLUMP_KMS if dv_clump_kms is None else dv_clump_kms
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
-    model = m.NH3Model()
+    # The model's line profile must use the same linewidth as the column
+    # conversion N = (N/dv) * dv. (Before 2026-09-30 the model was always built
+    # at the default 0.3 km/s, so a --dv rung changed only the column density.)
+    model = m.NH3Model(dv_clump_kms=dv_clump_kms)
     m.assert_expected_grouping(model)
 
     rows = []
@@ -129,7 +129,7 @@ def main():
     ap.add_argument('--n-log-n', type=int, default=70)
     ap.add_argument('--n-T', type=int, default=50)
     ap.add_argument('--n-log-ndv', type=int, default=36)
-    ap.add_argument('--rates', choices=['loreau', 'full_original'], default='loreau')
+    ap.add_argument('--rates', choices=['loreau', 's85'], default='loreau')
     ap.add_argument('--log-n-max', type=float, default=None,
                     help="override the fine grid's upper log10(n_H2) bound (default: gold's "
                          "own ceiling, max(LOG_N_AXIS)=7.5). Writes to a separate "

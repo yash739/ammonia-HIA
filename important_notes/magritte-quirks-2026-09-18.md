@@ -1355,3 +1355,132 @@ names;** `production/tgs/modelling/README.md` has the old-to-new table. The
 partial `--rates original` set was retired from the code (no outputs of it
 existed on disk). New: `analysis.validation.quadrant_check` (regenerates the
 paper's quadrant-check data, previously an inline one-off).
+
+## 22. Audit of the 1D escape-probability model: masing, numerics, fidelity to S85, rate reconstruction (09-30)
+
+Scripts and evidence: `scratch/escape1d_audit_2026-09-30/` (README there).
+
+### 22.1 What the masing is
+- **One deep maser: the (1,1) F1=0->1 outer satellite** (the one S85's
+  mechanism enhances). As coded: negative at 1287/1764 coarse-grid points
+  (Loreau) and 794 (full_original); tau_G median -0.96 / -0.27, minimum
+  -17.5 / -5.5 (radial tau; chord is 2x). Typically -5.5x its thermal
+  opacity (Loreau).
+- **Many marginal "masers" in weak high-level lines** ((2,1), (3,1), (3,2),
+  (4,4) inversion satellites): tau -1e-7..-1e-2, fractional inversions
+  0.4-34% (far above numerical precision), physically negligible.
+- **Very negative tau is not a huge population anomaly.** At 24 GHz,
+  h nu/kT ~ 0.03, so a line's thermal opacity comes from a ~3% population
+  difference; a 10% inversion flips and triples it.
+- **At S85's own 23 Table 1a best fits** (S85-faithful model) F1=0->1 is
+  negative at 8/23 but only marginally (tau -0.006..-0.11, one -0.38).
+  **Deep masing (tau < -0.5) is confined to T >= 30 K, log n 4.5-6,
+  log N/dv >= 15.1** -- exactly where S85's Fig. 4a shows the F1=0->1
+  contours bunching past 2.0 ("may even become greater than the main
+  line"). His model almost certainly mased there without it being noted.
+- **3D (Magritte, Loreau) also inverts F1=0->1, but weakly:** 1.5-4% per
+  statistical weight in the bulk of the sphere (0.05-1.0 R) at 26-36 K and
+  high column; central cells and 18 K not inverted. 1D S85-faithful gives
+  6-10% at the same points, 1D as coded 20-48%. So the inversion is
+  physical; the central escape probability roughly doubles-to-triples it,
+  and the as-coded departures (below) multiplied that again.
+
+### 22.2 Numerics are not the cause
+At masing points spanning tau01 = -0.02..-17.5: relative residual
+1e-11..1e-15; all Jacobian eigenvalues have negative real part (stable
+steady state); integrating dn/dt from a thermal start with no root finder
+reaches the same solution; 20/20 random starts find the same single root;
+a 40-digit re-solve agrees to 1e-13. The 69 unconverged coarse-grid points
+(4%) are mostly NOT masing (15/69) and drop to 23 (0 masing) once the
+grouping is fixed. Solver machinery: robust.
+
+### 22.3 Departures from S85 (model)
+1. **FIR grouping.** S85 (Sects. 2-3) treat BOTH (2,1)->(1,1) outer
+   satellites, F1=1->0 and F1=2->1, as separate lines. The code splits out
+   only 1->0; 2->1 (A = 9.1e-3 s^-1, 0.33 km/s from the main component) is
+   chained into the main group via 2->2. The (3,2) inversion satellites are
+   also chained into one 0.71 km/s group. Code: 12 groups + 22 singles;
+   S85: 12 + 28 (reconstructed exactly from the selection rules). Effect:
+   F1=0->1 masing 1287 -> 1136 points, depth halved; (2,1)/(1,1) at fixed
+   parameters moves by ~25-30%.
+2. **beta for tau < 0 is clamped to 1**, although S85's Eq. (4) is well
+   defined there (beta > 1, amplification). The clamp removes maser
+   saturation: minimum tau01 -17.5 -> -4.9 with Eq. (4). It is also
+   inconsistent with using the literal e(2 tau) for the brightness.
+3. **Linewidth convention.** 0.3 km/s is used as the profile's equivalent
+   width; S85's T_B,theor is reproduced to 0.7% (median, max 4.4%) if 0.3
+   is the FWHM instead, vs +4% as coded.
+4. Checked OK: column N = n R (radius) -- reproduces S85 T_B,theor; the
+   diameter convention would be 33% low. 36 levels = the six S85 manifolds.
+   Eqs. (4)-(10) implemented as written.
+
+### 22.4 The S85 rate reconstruction ('full_original')
+1. **alpha inverted.** S85 p.17: NH3-H2 rates are 1.5x HIGHER than NH3-He.
+   The code divides the He rates by 1.5 (docstring misquotes the paper). The
+   full_original density axis is therefore n_code = 1.5 n' (S85's n'),
+   i.e. +0.18 dex vs Table 1a; vs true n_H2 the error is 2.25x in rates.
+2. **Within-manifold parity-changing collisions omitted.** Green gives
+   k(JK l->u) for every manifold and S85a Table 1 the F-resolved factors
+   (e.g. 110L->112U 0.27, 111U 0.73); the code only loops over pairs of
+   different manifolds. 106 entries stay Loreau = 53-77% of every (1,1)
+   sublevel's collisional outflow. The "95% Stutzki-sourced" figure (entry
+   count) is misleading.
+3. **IOS-zero blocks half-applied.** S85a's "*) IOS rates identically 0"
+   marks whole 3x3 blocks ((1,1)L->(2,2)U, (2,2)L->(4,4)U); the
+   transcription attached it to the middle row only, so F=2 rows are 0 and
+   the rest fall back to Loreau (56 entries).
+4. **Green Table III transcription errors** (400-dpi scan): 1,1l->2,1u 30 K
+   5.4e-12 (CSV 3.4e-12) and 300 K 6.2e-11 (6.3e-11); 1,1u->2,1l 30 K
+   5.8e-12 (3.8e-12) -- the key (1,1)<->(2,1) pathways, 35% low; 2,1l->2,1u
+   15 K 2.8e-11 (2.6e-11); 2,1l->4,4u 15 K 2.8e-16 (2.9e-16); 1,1l->2,2u
+   100 K probably 2.5e-13 (2.3e-13; faint print).
+5. Assumptions to state: Table 2's last column is printed "340 K" (taken
+   as 100 K); (2,2) F1->2 last entry printed 3.18E-10 (taken as E-11); S85
+   cite Green (1981, NASA TM 83869) for rates -- Green (1980) Table III is
+   assumed to be the same set.
+6. Checked OK: S85a Table 1 transcription (sum rules within 2% for every
+   inter-manifold block; ~40 values spot-checked); Table 2 values; the
+   L-target parity mapping; lower inversion level = LAMDA sym +1.
+
+### 22.5 Validation of the corrected model against S85's own outputs
+At S85's 23 Table 1a fits, with all fixes (rates, grouping, Eq. 4 beta, n'
+axis): T_B(1,1) within 4% of his T_B,theor (0.7% with the FWHM
+convention); (2,1)/(1,1) = 0.019/0.055/0.072 vs his 0.018/0.052/0.068;
+observed satellite ratios reproduced with rms z = 0.80 at his chi2<1.5
+positions (as coded: 1.26). **The corrected 1D model reproduces S85's
+model.** As coded, (2,1)/(1,1) happened to land close (0.016/0.050/0.066)
+only through compensating errors: fixing the rates alone gives
+0.026/0.069/0.087, and the grouping fix brings it back.
+
+### 22.6 Consequences for Paper I (not yet acted on)
+Every 1D number in the draft (tab:escape1d, 1D retrievals for both rate
+sets, Delta-v sweep, 1D Fig. 5/6 curves, W33 1D, "39% of best fits mase",
+"95% Stutzki-sourced") was computed with the as-coded model and needs
+re-deriving with the corrected one. Expected direction: the central claim
+(S85's (2,1) over-prediction is reproduced) is strengthened -- the
+corrected model reproduces S85's own predictions within 6%.
+
+### 22.7 RETRACTION of sec. 18 (the 1D Delta-v sweep) -- it never varied the linewidth
+`compute_grid` built the model as `NH3Model()` (default 0.3 km/s) for every
+rung; `--dv` only entered through N_total = (N/dv) x dv. So each "Delta v
+rung" was the 0.3 km/s model at a column scaled by dv/0.3. That is exactly
+why the fitted log(N/dv) shifted by log10(0.3/dv) "to hold N_total fixed":
+the physics depended on N_total only. The "N/dv - dv degeneracy", the
+"rates-dependent detectability of Zhou-style quenching" and Paper I's
+linewidth paragraph (sec:robustness) are artefacts and are withdrawn.
+Fixed (model now built at the rung's linewidth). With S85's fixed overlap
+scheme the corrected model has NO dependence on dv at fixed N/dv (tau is
+proportional to N/dv and the grouping is fixed by hand; verified identical
+to 6 digits at 0.2/0.3/0.8 km/s). A meaningful 1D linewidth test needs the
+partial-overlap treatment of S85's Appendix A (Eq. A3 exchange
+probabilities), which S85 themselves simplified away. Not rebuilt.
+
+### 22.8 Rebuild (09-30)
+Production code now implements all corrections (model.py: S85 grouping,
+Eq. 4 beta for tau<0, FWHM linewidth; rates_stutzki.py: rate set renamed
+`full_original` -> `s85`, He rates on S85's n' axis, within-manifold
+inversion-changing rates, full IOS-zero blocks; reference CSVs corrected).
+tests/test_escape1d.py asserts the S85 grouping, beta continuation, rate
+completeness, and that the model reproduces S85's own Table 1a T_B,theor
+(within 5%) and Table 3 (2,1)/(1,1) theory (within 10%). Old 1D outputs
+archived to scratch/output/output_escape1d_pre_audit_2026-09-30/.

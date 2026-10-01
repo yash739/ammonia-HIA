@@ -1,4 +1,4 @@
-"""One-off deep dive on S106 (0,0) under full_original rates: the raw
+"""One-off deep dive on S106 (0,0) under s85 rates: the raw
 chi2-best (global) retrieval lands on the low-density branch and its
 (2,1)/(1,1) prediction under-shoots the observation (see
 analysis/retrieval/escape1d_stutzki1984.py's regular output). This regenerates
@@ -39,8 +39,8 @@ def load_grid(path):
 
 
 def main():
-    grid_path = out_csv_for('full_original', fine=True)
-    outdir = os.path.join(outdir_for('full_original'), 'stutzki1985_retrieval')
+    grid_path = out_csv_for('s85', fine=True)
+    outdir = os.path.join(outdir_for('s85'), 'stutzki1985_retrieval')
     os.makedirs(outdir, exist_ok=True)
 
     df = load_grid(grid_path)

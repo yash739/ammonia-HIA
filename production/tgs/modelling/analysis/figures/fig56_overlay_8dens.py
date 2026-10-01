@@ -26,7 +26,7 @@ from analysis.figures.fig56_compare_escape1d import (MAGRITTE_CSV, ESCAPE1D_CSV,
 
 LOG_NS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
 STUTZKI_NS = {3.5, 5.0, 7.0}
-RATES_LABEL = {'full_original': "Stutzki's own rates", 'loreau': 'Loreau et al. (2023) rates'}
+RATES_LABEL = {'s85': "Stutzki's own rates", 'loreau': 'Loreau et al. (2023) rates'}
 
 # (key, panel title, magritte col, escape1d col, eq11 component)
 OBSERVABLES = [

@@ -1,43 +1,36 @@
-"""Full, generalized version of rate_swap_full.py's hybrid collision matrix,
-built from the complete user-supplied transcriptions of Green (1980) Table
-III and Stutzki & Winnewisser (1985a) Table 1 -- production/references/
-Green_Table3_1980.csv and Stutzki_1985a_table1.csv -- rather than the
-earlier partial, hand-transcribed (1,1)-source-only subset in
-rate_swap_full.py.
+"""Stutzki & Winnewisser's (1985) own collision rates for the 1D model, rebuilt
+from Green (1980) Table III (NH3-He state-to-state rotational rates) and
+Stutzki & Winnewisser (1985a; "S85a") Tables 1-2 (IOS hyperfine factors and
+quasi-elastic rates), transcribed in production/references/.
 
-The model tracks exactly 18 (J,K,F) states x 2 parities = 36 levels:
-(1,1):F=0,1,2  (2,1):F=1,2,3  (2,2):F=1,2,3  (3,1):F=2,3,4  (3,2):F=2,3,4
-(4,4):F=3,4,5
--- which is exactly the scope both transcribed tables cover. Checked
-directly (not assumed): both tables tabulate all 15 possible unordered
-inter-manifold pairs among these six manifolds, and BOTH tables use
-IDENTICAL source/target direction for every one of the 15 pairs (verified
-by comparing the set of (source_manifold, target_manifold) pairs found in
-each CSV -- they match exactly), which is what Green's own text implies
-("Rate constants... for excitation... de-excitation rates can be obtained
-from detailed balance") -- the tabulated direction is always the
-excitation (energy-increasing) one. This removes any ambiguity about
-which direction to apply the detailed-balance formula in.
+How the rates are assembled (S85a Sect. 4):
+* inter-manifold and within-manifold inversion-changing rates:
+  k(J K F p -> J' K' F' p') = g(F,p -> F',U) x k_Green(J K p -> J' K' p'),
+  with S85a's rule that a lower-inversion-level (L) target takes the factor
+  of the opposite source parity's U-target entry; de-excitation by detailed
+  balance;
+* same-parity hyperfine changes within a manifold: S85a Table 2 directly.
 
-Green gives all four (source parity, target parity) combinations directly
-for each pair. Stutzki's Table 1 gives the IOS relative branching factor
-g(source F, source parity -> target F', 'U') for every source sublevel
-except 443U and 444U -- there is nothing higher than (4,4) in this scheme
-for those two to excite into, so their absence is expected, not a gap.
-The 'L'-target factor is obtained, per the paper's own Eq. (22b)/(25),
-from the OPPOSITE source parity's 'U'-target entry for the same (F, F')
-pair -- exactly the symmetry the original (1,1)-only code already used.
+DENSITY AXIS. The rates are used as NH3-He rates, exactly as S85 did, so the
+density this rate set is paired with is S85's n' (their Sect. 4: C_He n' =
+C_He n_He + C_H2 n_H2, with NH3-H2 rates 1.5x the NH3-He rates). A grid built
+with these rates therefore has n' on its density axis, directly comparable
+with S85's Table 1a and Figs. 4-6; n_H2 = n' / 1.75 for X(He/H2) = 0.25.
 
-Table 2's 18 intra-multiplet quasi-elastic rates (nh3hia/escape1d/rates_table2.py) are
-reused unchanged -- they were already complete for all six manifolds.
+History (audit 2026-09-30, important_notes sec. 22): the first version of
+this module divided the He rates by 1.5 (inverting S85's statement), omitted
+the within-manifold inversion-changing rates (left at Loreau values: 53-77%
+of each (1,1) sublevel's collisional outflow), applied S85a's "IOS rates
+identically 0" mark to one row of each 3x3 block instead of the whole block,
+and used a Green Table III transcription with the key (1,1)<->(2,1) rates
+35% low at 30 K. All four are corrected here and in the reference CSVs.
+Every off-diagonal entry among the 36 levels is now S85-sourced.
 
-Any (source, target) sublevel pair genuinely absent from these two tables
-(443U/444U as inter-multiplet sources) falls back element-wise to
-Loreau's own collision_matrix(T) entry -- the matrix is seeded from that
-baseline and only overwritten where transcribed data exists.
-`coverage_report()` counts exactly how many of the model's off-diagonal
-entries (among the six tracked manifolds) ended up Stutzki-sourced vs
-Loreau-fallback, so the completeness claim is measured, not assumed.
+Assumptions to state when using these rates: S85a Table 2's last column is
+printed "340 K" and taken as 100 K (as Tables 1, 3, 4); its (2,2) F 1->2
+entry printed 3.18E-10 is taken as 3.18E-11 (the column's trend); S85 cite
+Green (1981, NASA TM 83869) for rates computed with the same potential as
+Green (1980) Table III, which is used here.
 """
 import os
 
@@ -131,12 +124,12 @@ class TranscribedRates:
         self._green_cache = {}
         self._stutzki_cache = {}
 
-    def green_rate(self, src, tgt, T_k, alpha):
+    def green_rate(self, src, tgt, T_k):
         key = (src, tgt)
         if key not in self._green_cache:
             rates = self.green.get(src, {}).get(tgt)
             self._green_cache[key] = None if rates is None else CubicSpline(
-                np.log(GREEN_T_GRID), np.log10(rates / alpha))
+                np.log(GREEN_T_GRID), np.log10(rates))
         spline = self._green_cache[key]
         return None if spline is None else 10.0 ** spline(np.log(T_k))
 
@@ -167,75 +160,68 @@ def get_rates():
     return _RATES_SINGLETON
 
 
-def build_complete_original_collision_matrix(model, T_k, alpha=rst.ALPHA_HE_TO_H2,
-                                              include_table2=True, coverage=None):
-    """Loreau baseline everywhere, overwritten wherever the transcribed
-    Green Table III x Stutzki Table 1 data covers a pathway. `coverage`,
-    if passed a dict, is updated in place with {'stutzki': n, 'loreau': n}
-    off-diagonal entry counts among the levels this function actually
-    touches, so completeness can be reported rather than assumed.
-    """
+def build_s85_collision_matrix(model, T_k, include_table2=True, coverage=None):
+    """Collision matrix (cm^3 s^-1, NH3-He; pair with S85's density n') at T_k.
+
+    Starts from Loreau's matrix only so that any entry the S85 tables do not
+    define would be visible; `coverage` (a dict, updated in place) counts the
+    off-diagonal entries that are S85-sourced vs still Loreau, by number and by
+    rate-weighted share of each level's collisional outflow."""
     rates = get_rates()
     Cmat = model.collision_matrix(T_k).copy()
+    touched = np.zeros_like(Cmat, dtype=bool)
     par_letter = {+1: 'L', -1: 'U'}
+    idx = lambda J, K, sym, F: rst._level_index(model, J, K, sym, F)
 
-    if include_table2:
+    def put(i_from, i_to, k_up):
+        Cmat[i_from, i_to] = k_up
+        Cmat[i_to, i_from] = (k_up * (model.g[i_from] / model.g[i_to])
+                              * np.exp((model.E_K[i_to] - model.E_K[i_from]) / T_k))
+        touched[i_from, i_to] = touched[i_to, i_from] = True
+
+    if include_table2:   # same-parity hyperfine changes within a manifold
         log_T2 = np.log(rst.TABLE2_T_GRID)
         for (J, K, Ff, Ft), rates_He in rst.TABLE2_NH3_HE.items():
-            rates_H2 = np.array(rates_He) / alpha
-            spline = CubicSpline(log_T2, np.log10(rates_H2))
-            rate_ft = 10.0 ** spline(np.log(T_k))
+            rate_ft = 10.0 ** CubicSpline(log_T2, np.log10(rates_He))(np.log(T_k))
             for sym in (+1, -1):
-                i_from = rst._level_index(model, J, K, sym, Ff)
-                i_to = rst._level_index(model, J, K, sym, Ft)
-                g_from, g_to = model.g[i_from], model.g[i_to]
-                Cmat[i_from, i_to] = rate_ft
-                Cmat[i_to, i_from] = rate_ft * g_from / g_to
-            if coverage is not None:
-                coverage['stutzki'] = coverage.get('stutzki', 0) + 2
+                put(idx(J, K, sym, Ff), idx(J, K, sym, Ft), rate_ft)   # dE ~ 0
 
-    for (Jf, Kf), (Jt, Kt) in PAIR_DIRECTIONS:
-        for pf_sym in (+1, -1):
-            pf_l = par_letter[pf_sym]
-            for pt_sym in (+1, -1):
-                pt_l = par_letter[pt_sym]
-                k_rot = rates.green_rate((Jf, Kf, pf_l.lower()), (Jt, Kt, pt_l.lower()), T_k, alpha)
-                if k_rot is None:
-                    if coverage is not None:
-                        coverage['loreau'] = coverage.get('loreau', 0) + 2 * len(F_OF[(Jf, Kf)]) * len(F_OF[(Jt, Kt)])
+    # inter-manifold, plus within-manifold inversion-changing (l -> u)
+    pairs = [((Jf, Kf), (Jt, Kt), pf, pt) for (Jf, Kf), (Jt, Kt) in PAIR_DIRECTIONS
+             for pf in (+1, -1) for pt in (+1, -1)]
+    pairs += [(jk, jk, +1, -1) for jk in MANIFOLDS]
+    for (Jf, Kf), (Jt, Kt), pf_sym, pt_sym in pairs:
+        pf_l, pt_l = par_letter[pf_sym], par_letter[pt_sym]
+        k_rot = rates.green_rate((Jf, Kf, pf_l.lower()), (Jt, Kt, pt_l.lower()), T_k)
+        if k_rot is None:
+            continue
+        lookup_pf_l = pf_l if pt_l == 'U' else ('U' if pf_l == 'L' else 'L')
+        for Ff in F_OF[(Jf, Kf)]:
+            for Ft in F_OF[(Jt, Kt)]:
+                g = rates.ios_factor((Jf, Kf, Ff, lookup_pf_l), (Jt, Kt, Ft, 'U'), T_k)
+                if g is None:
                     continue
-                lookup_pf_l = pf_l if pt_l == 'U' else ('U' if pf_l == 'L' else 'L')
-                for Ff in F_OF[(Jf, Kf)]:
-                    for Ft in F_OF[(Jt, Kt)]:
-                        g = rates.ios_factor((Jf, Kf, Ff, lookup_pf_l), (Jt, Kt, Ft, 'U'), T_k)
-                        if g is None:
-                            if coverage is not None:
-                                coverage['loreau'] = coverage.get('loreau', 0) + 2
-                            continue
-                        if coverage is not None:
-                            coverage['stutzki'] = coverage.get('stutzki', 0) + 2
-                        i_from = rst._level_index(model, Jf, Kf, pf_sym, Ff)
-                        i_to = rst._level_index(model, Jt, Kt, pt_sym, Ft)
-                        k_up = g * k_rot
-                        g_from, g_to = model.g[i_from], model.g[i_to]
-                        E_from, E_to = model.E_K[i_from], model.E_K[i_to]
-                        Cmat[i_from, i_to] = k_up
-                        Cmat[i_to, i_from] = k_up * (g_from / g_to) * np.exp((E_to - E_from) / T_k)
+                put(idx(Jf, Kf, pf_sym, Ff), idx(Jt, Kt, pt_sym, Ft), g * k_rot)
+
+    if coverage is not None:
+        off = ~np.eye(len(Cmat), dtype=bool)
+        nz = off & (Cmat > 0)
+        coverage['s85_entries'] = int((nz & touched).sum())
+        coverage['loreau_entries'] = int((nz & ~touched).sum())
+        out = np.where(off, Cmat, 0.0).sum(axis=1)
+        lor = np.where(off & ~touched, Cmat, 0.0).sum(axis=1)
+        coverage['max_loreau_outflow_share'] = float(np.max(lor / out))
     return Cmat
 
 
-def coverage_report(model, T_k=24.0, alpha=rst.ALPHA_HE_TO_H2):
+def coverage_report(model, T_k=24.0):
     cov = {}
-    build_complete_original_collision_matrix(model, T_k, alpha=alpha, coverage=cov)
-    total = cov.get('stutzki', 0) + cov.get('loreau', 0)
-    return cov, total
+    build_s85_collision_matrix(model, T_k, coverage=cov)
+    return cov
 
 
 if __name__ == '__main__':
     import nh3hia.escape1d.model as m
     model = m.NH3Model()
-    m.assert_expected_grouping(model)
-    cov, total = coverage_report(model, T_k=24.0)
-    print(f"coverage at T=24K: stutzki-sourced={cov.get('stutzki',0)}  "
-          f"loreau-fallback={cov.get('loreau',0)}  total={total}  "
-          f"({100*cov.get('stutzki',0)/total:.1f}% Stutzki-sourced)")
+    for T in (15.0, 24.0, 36.0, 48.0):
+        print(f"T={T:.0f} K:", coverage_report(model, T_k=T))

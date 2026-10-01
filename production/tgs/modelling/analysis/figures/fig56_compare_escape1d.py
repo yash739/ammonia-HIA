@@ -7,7 +7,7 @@ Delta v = 0.3 km/s).
 
 Four curves per panel, one panel per (T_k, n'_H2) combination (9 panels,
 matching his own figure's own layout):
-  (a) escape1d + full_original (95% Stutzki-sourced) rates -- a faithful
+  (a) escape1d + s85 (Stutzki & Winnewisser's own 1985) rates -- a faithful
       stand-in for his own published curves, run at his exact parameters.
   (b) escape1d + Loreau et al. (2023) rates -- the modern hyperfine-
       resolved NH3-H2 rates used throughout the rest of this project's
@@ -21,14 +21,14 @@ matching his own figure's own layout):
   (d) Eq. (11), the LTE no-anomaly reference (for context only -- (a),(b)
       and (c) all include the trapping anomaly; Eq. 11 does not).
 
-(analysis/grids/escape1d_fig56_curves.py --rates {loreau,full_original} computes (a)
+(analysis/grids/escape1d_fig56_curves.py --rates {loreau,s85} computes (a)
 and (b); both already run.)
 
 Three quantitative residuals reported per panel (interpolating each denser
 escape1d curve onto Magritte's own sparser tau_main points in log-tau
-space): full_original-vs-Magritte and loreau-vs-Magritte (method-fixed
+space): s85-vs-Magritte and loreau-vs-Magritte (method-fixed
 rates-vs-Magritte, i.e. how much either rate choice differs from the full
-3D treatment), and loreau-vs-full_original (rates-only, method fixed --
+3D treatment), and loreau-vs-s85 (rates-only, method fixed --
 the complementary test).
 
 Caveat carried from reproduce_stutzki_fig5_6.py: the n'_H2=10^3.5 branch
@@ -57,7 +57,7 @@ from nh3hia import paths
 
 MAGRITTE_CSV = paths.PRODUCTION + "/output_lut_fig56/results/lut_dv0.30.csv"
 ESCAPE1D_CSV = {
-    'full_original': paths.PRODUCTION + "/output_escape1d/results_full_original_rates/fig56_curves.csv",
+    's85': paths.PRODUCTION + "/output_escape1d/results_s85_rates/fig56_curves.csv",
     'loreau': paths.PRODUCTION + "/output_escape1d/results_loreau_rates/fig56_curves.csv",
 }
 OUTDIR = paths.PRODUCTION + "/output_lut_fig56/results/fig5_6_direct_comparison/"
@@ -66,7 +66,7 @@ TEMPS = [18.0, 26.0, 36.0]
 LOG_NS = [3.5, 5.0, 7.0]
 
 ESCAPE1D_STYLE = {
-    'full_original': dict(color='tab:blue', lw=2.0, label="escape1d, Stutzki's own rates"),
+    's85': dict(color='tab:blue', lw=2.0, label="escape1d, Stutzki's own rates"),
     'loreau': dict(color='tab:green', lw=2.0, ls=(0, (4, 1.5)), label='escape1d, Loreau rates'),
 }
 
@@ -166,14 +166,14 @@ def main():
                         ls=':', alpha=0.7, label='Eq. (11), no anomaly' if first_panel else None)
 
                 resid_fo = interp_residual(mag_sub['tau_chord'].values, mag_sub[mag_col].values,
-                                            esc_sub['full_original']['tau_chord'].values,
-                                            esc_sub['full_original'][esc_col].values)
+                                            esc_sub['s85']['tau_chord'].values,
+                                            esc_sub['s85'][esc_col].values)
                 resid_lo = interp_residual(mag_sub['tau_chord'].values, mag_sub[mag_col].values,
                                             esc_sub['loreau']['tau_chord'].values,
                                             esc_sub['loreau'][esc_col].values)
                 resid_rates = interp_residual(esc_sub['loreau']['tau_chord'].values, esc_sub['loreau'][esc_col].values,
-                                               esc_sub['full_original']['tau_chord'].values,
-                                               esc_sub['full_original'][esc_col].values)
+                                               esc_sub['s85']['tau_chord'].values,
+                                               esc_sub['s85'][esc_col].values)
 
                 med_fo, max_fo, n_fo = summarize_residual(resid_fo)
                 med_lo, max_lo, n_lo = summarize_residual(resid_lo)
@@ -183,9 +183,9 @@ def main():
                              f"vs Magritte: full_orig med={med_fo:.3f}, loreau med={med_lo:.3f}",
                              fontsize=8.5)
 
-                for rates, med, mx, n in [('full_original_vs_magritte', med_fo, max_fo, n_fo),
+                for rates, med, mx, n in [('s85_vs_magritte', med_fo, max_fo, n_fo),
                                           ('loreau_vs_magritte', med_lo, max_lo, n_lo),
-                                          ('loreau_vs_full_original', med_rates, max_rates, n_rates)]:
+                                          ('loreau_vs_s85', med_rates, max_rates, n_rates)]:
                     summary_rows.append(dict(observable=obs_key, T_k=T, log_n_H2=log_n, comparison=rates,
                                               n_overlap=n, median_abs_resid=med, max_abs_resid=mx))
 

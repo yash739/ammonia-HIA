@@ -4,7 +4,7 @@ exact Fig. 5/6 parameters (grid.FIG56_TEMPS/FIG56_LOG_N_H2: T_k in
 10^13.7-10^15.1 cm^-2 at Delta v = 0.3 km/s), via grid.compute_fig56_curves,
 under two different collision-rate sets:
 
-- 'full_original': the full_original (95% Stutzki-sourced) collision-rate
+- 's85': the s85 (Stutzki & Winnewisser's own 1985) collision-rate
   reconstruction (nh3hia/escape1d/rates_stutzki.py) -- a faithful stand-in for his
   own published curves, no digitization needed.
 - 'loreau': the modern hyperfine-resolved NH3-H2 rates (Loreau et al. 2023)
@@ -38,7 +38,7 @@ LOG_N_H2_LIST = (3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0)
 
 CMAT_BUILDERS = {
     'loreau': lambda model, T: model.collision_matrix(T),
-    'full_original': rst_full.build_complete_original_collision_matrix,
+    's85': rst_full.build_s85_collision_matrix,
 }
 
 
@@ -68,9 +68,9 @@ def run(rates):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rates', choices=['loreau', 'full_original', 'both'], default='both')
+    ap.add_argument('--rates', choices=['loreau', 's85', 'both'], default='both')
     a = ap.parse_args()
-    rates_list = ['loreau', 'full_original'] if a.rates == 'both' else [a.rates]
+    rates_list = ['loreau', 's85'] if a.rates == 'both' else [a.rates]
     for rates in rates_list:
         run(rates)
 

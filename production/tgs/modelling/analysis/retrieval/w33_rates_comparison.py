@@ -1,11 +1,11 @@
 """Direct comparison at W33: escape1d + Loreau rates vs escape1d + Stutzki's
-own (full_original, 95% Stutzki-sourced) rates. Holds the radiative-transfer
+own (s85: Stutzki & Winnewisser's own 1985) rates. Holds the radiative-transfer
 method fixed (1D escape-probability) and swaps only the collisional rates --
 the complementary test to the gold-vs-escape1d (method-swap, rates-fixed)
 comparison already in the paper (sec:escape1d).
 
 Reads the two W33 retrieval summaries already produced by
-analysis/retrieval/escape1d_w33.py --rates {loreau,full_original} -- no new compute.
+analysis/retrieval/escape1d_w33.py --rates {loreau,s85} -- no new compute.
 """
 import os
 
@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from nh3hia import paths
 
 LOREAU_CSV = paths.PRODUCTION + "/output_escape1d/results_loreau_rates/w33_retrieval/summary.csv"
-FULL_ORIG_CSV = paths.PRODUCTION + "/output_escape1d/results_full_original_rates/w33_retrieval/summary.csv"
+FULL_ORIG_CSV = paths.PRODUCTION + "/output_escape1d/results_s85_rates/w33_retrieval/summary.csv"
 OUT_PNG = paths.PRODUCTION + "/output_escape1d/results/w33_rates_comparison.png"
 
 
@@ -41,7 +41,7 @@ def main():
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), sharey=True)
     for ax, src in zip(axes, sources):
-        labels = ['Loreau\nrates', "Stutzki's own\nrates (95%)", 'Tursun+22\nobserved']
+        labels = ['Loreau\nrates', "Stutzki's own\n1985 rates", 'Tursun+22\nobserved']
         vals = [lor.loc[src, 'R21_11_predicted'], fo.loc[src, 'R21_11_predicted'], lor.loc[src, 'R21_11_observed']]
         colors = ['tab:orange', 'tab:blue', 'black']
         ax.bar(labels, vals, color=colors, alpha=0.85)
@@ -54,7 +54,7 @@ def main():
                      f"$\\chi^2$={fo.loc[src,'chi2']:.3f}", fontsize=8.5)
         ax.set_ylabel(r'$T_B(2,1)/T_B(1,1)$', fontsize=9)
         ax.grid(alpha=0.2, axis='y')
-    plt.suptitle('W33: escape-probability model, Loreau vs. Stutzki\'s own (full_original) rates\n'
+    plt.suptitle('W33: escape-probability model, Loreau vs. Stutzki\'s own (s85) rates\n'
                  '(same radiative-transfer method throughout -- only the collisional rates differ)',
                  fontsize=11)
     plt.tight_layout(rect=(0, 0, 1, 0.88))

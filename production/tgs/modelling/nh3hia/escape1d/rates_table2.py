@@ -19,9 +19,13 @@ competing against the radiative selective-trapping mechanism for those same
 sublevels) and leaves every other entry (including all rotational-changing
 rates) as Loreau's.
 
-NH3-He -> NH3-H2: divided by alpha=1.5, per stutzki_1985.pdf's own Sect. 4
-("NH3-He rates are estimated to be a factor alpha=1.5 higher than the
-NH3-H2 rates (Green, 1981)").
+NOTE (2026-09-30): this early experiment divided the He rates by
+alpha=1.5, citing S85 Sect. 4 as "NH3-He rates are a factor 1.5 higher than
+NH3-H2". S85 actually say the opposite (NH3-H2 rates are 1.5x the NH3-He
+rates). The production rate set (rates_stutzki.build_s85_collision_matrix)
+uses the He rates as-is with S85's density n'. This module now only supplies
+the Table 2 data and _level_index; build_hybrid_collision_matrix is kept for
+the archived scripts that used it.
 
 Table 2's temperature header for its last column is transcribed here as
 100 K, matching Table 1's explicitly stated 15/25/50/100 K grid and the

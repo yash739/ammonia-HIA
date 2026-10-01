@@ -39,8 +39,8 @@ modelling/
 │   │   ├── axes.py         grid axes (gold grid and Figs 5/6 grid)
 │   │   └── interpolator.py LutInterpolator + chi2_retrieve: interpolation-based retrieval
 │   ├── escape1d/           1D escape-probability model (S85's method)
-│   │   ├── model.py        36-level statistical equilibrium + S85 Eq. (10) closure
-│   │   ├── rates_stutzki.py   S85's own 1985 rates (Green 1980 x S85a Table 1), 95% complete
+│   │   ├── model.py        36-level statistical equilibrium, S85's grouping and Eqs. (4)-(10)
+│   │   ├── rates_stutzki.py   S85's own 1985 rates (Green 1980 x S85a Tables 1-2), complete; rate set 's85'
 │   │   ├── rates_table2.py    S85a Table 2 quasi-elastic rates and level-index helpers
 │   │   ├── grid.py         builds the 1D grids (CLI); output paths per rate set and linewidth
 │   │   └── curves.py       dense S85 Fig. 4 grid and Fig. 5/6 curves
@@ -101,7 +101,7 @@ or `scratch/` (disposable):
 |---|---|---|
 | `production/output_lut_gold/` | Main 3D grid: 14 log n × 14 T × 9 log(N/Δv) = 1764 models (1741 converged), Δv = 0.3 km/s. `results/lut_dv0.30.csv` + `spectra/*.npz` | `analysis.grids.build_gold_grid` |
 | `production/output_lut_fig56/` | 3D grid at S85's Figs 5/6 temperatures (18, 26, 36 K), 8 densities: 216 models | `analysis.grids.build_fig56_grid` |
-| `production/output_escape1d/results_{loreau,full_original}_rates[_dv*]/` | 1D grids (`grid.csv` on the gold axes, `grid_fine.csv` dense), retrievals, Fig. 4 | `nh3hia.escape1d.grid` and the `escape1d_*` scripts |
+| `production/output_escape1d/results_{loreau,s85}_rates/` | 1D grids (`grid.csv` on the gold axes, `grid_fine.csv` dense), retrievals, Fig. 4 | `nh3hia.escape1d.grid` and the `escape1d_*` scripts |
 | `production/tgs/model_files/` | Magritte model cache (`.hdf5`, deterministic names) | `run_model` |
 
 ## Which script produces what (Paper I)
@@ -118,10 +118,10 @@ or `scratch/` (disposable):
 | S85 Figs 5/6 counterpart (fig:fig56_nlte, fig:fig56_scan) | `analysis.figures.fig56_magritte` (LTE reference lines from `fig56_slice --mode lte`) |
 | 3D vs 1D Figs 5/6 comparison | `analysis.grids.escape1d_fig56_curves`, then `analysis.figures.fig56_compare_escape1d` / `fig56_overlay_8dens` |
 | 23-position S84 retrieval, (2,1) test (tab:21test, fig:branch) | `analysis.retrieval.magritte_stutzki1984` |
-| 1D retrievals (tab:escape1d) | `analysis.retrieval.escape1d_stutzki1984 --rates {loreau,full_original}` |
+| 1D retrievals (tab:escape1d) | `analysis.retrieval.escape1d_stutzki1984 --rates {loreau,s85}` |
 | S106 (0,0) branches (fig:s106_reversal) | `analysis.retrieval.s106_branch_comparison` |
 | Density ceiling to log n 8.5 (sec:robustness) | `analysis.grids.escape1d_extend_decade`, then the 1D retrievals |
-| Linewidth sweep (sec:robustness) | `nh3hia.escape1d.grid --fine --dv X`, the 1D retrieval with `--dv X`, then `analysis.retrieval.dv_sweep_comparison`, `analysis.figures.fig4_r10_dv_sweep` |
+| Linewidth sweep | withdrawn: the old sweep never varied the linewidth (notes sec. 22.7); in S85's fixed-overlap model results depend on N/Δv only |
 | W33 (tab:w33) | `analysis.retrieval.magritte_w33`, `escape1d_w33`, `w33_rates_comparison` |
 | W33 estimator noise check | `analysis.validation.noise_mc_w33_linewidth` |
 
@@ -155,6 +155,10 @@ Details and evidence are in `important_notes/magritte-quirks-2026-09-16.md`,
   interpolated, ratios formed afterwards), never nearest-row scoring. The
   1D retrievals use the dense fine grid directly, because the 1D model has
   masing poles that interpolation would smear.
+- **The 1D model (`nh3hia.escape1d`) follows S85 as written**: their explicit
+  12+28 line grouping, Eq. (4) continued to τ<0, Δv = 0.3 km/s as a FWHM.
+  The `s85` rate set uses the NH3–He rates with S85's density n′. At S85's
+  own Table 1a fits it reproduces their model outputs (tests/test_escape1d.py).
 - **The consistency filter** (filling factor η_f ≤ 1, Jeans clump count
   K ≥ Δv_obs/0.3) is S85's post-fit branch choice. It acts as a prior for
   the high-density branch, not a measurement.
@@ -197,4 +201,5 @@ map as follows (`w33/` and `stutzki85/` were the old subdirectories):
 | everything else | `archive/` (see `archive/README.md`) |
 
 The `--rates original` option (a partial reconstruction of S85's rates) was
-retired. `full_original` is the complete reconstruction.
+retired. `full_original` was renamed `s85` on 2026-09-30 when its rates were
+corrected (notes sec. 22); its density axis is S85's n' (n_H2 = n'/1.75).
