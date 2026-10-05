@@ -117,7 +117,7 @@ def chi2_slice_plot(ax, X, Y, Z3d, axis_i, xlabel, ylabel, best_xy, chi2_best,
     ax.set_ylabel(ylabel, fontsize=8)
     ax.set_title(title, fontsize=8)
     plt.colorbar(pcm, ax=ax, shrink=0.85, label=r'profile $\chi^2_{min}$ (log scale)')
-    ax.legend(fontsize=6, loc='best')
+    ax.legend(fontsize=6, loc='lower right')
 
 
 def main():
@@ -197,7 +197,7 @@ def main():
         ax_spec.set_xlabel('v [km/s]', fontsize=9)
         ax_spec.set_ylabel(r'$T_B$ [K]', fontsize=9)
         ax_spec.set_title(f'{region} {pos}: (1,1) spectrum', fontsize=10)
-        ax_spec.legend(fontsize=7)
+        ax_spec.legend(fontsize=7, loc='lower right')
         ax_spec.grid(alpha=0.25)
 
         # Same two spectra, each divided by its OWN main-line peak (T_B_obs for
@@ -213,7 +213,7 @@ def main():
         ax_spec_n.set_xlabel('v [km/s]', fontsize=9)
         ax_spec_n.set_ylabel(r'$T_B\,/\,T_B(\mathrm{main})$', fontsize=9)
         ax_spec_n.set_title('main-line-normalized (ratio shape)', fontsize=10)
-        ax_spec_n.legend(fontsize=7)
+        ax_spec_n.legend(fontsize=7, loc='lower right')
         ax_spec_n.grid(alpha=0.25)
 
         ax_txt = fig.add_subplot(gs[0, 6:9])

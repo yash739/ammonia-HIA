@@ -125,7 +125,7 @@ def main():
     ax_spec.set_xlabel('v [km/s]', fontsize=9)
     ax_spec.set_ylabel(r'$T_B$ [K]', fontsize=9)
     ax_spec.set_title(f'{REGION} {POS}: (1,1) spectrum, both branches', fontsize=10)
-    ax_spec.legend(fontsize=7)
+    ax_spec.legend(fontsize=7, loc='lower right')
     ax_spec.grid(alpha=0.25)
 
     obs_spec_norm = gaussian_spectrum(v, [x / T_B_obs for x in obs_amps], dv_obs)
@@ -140,7 +140,7 @@ def main():
     ax_spec_n.set_xlabel('v [km/s]', fontsize=9)
     ax_spec_n.set_ylabel(r'$T_B\,/\,T_B(\mathrm{main})$', fontsize=9)
     ax_spec_n.set_title('main-line-normalized (ratio shape)', fontsize=10)
-    ax_spec_n.legend(fontsize=7)
+    ax_spec_n.legend(fontsize=7, loc='lower right')
     ax_spec_n.grid(alpha=0.25)
 
     ax_txt = fig.add_subplot(gs[0, 6:9])
