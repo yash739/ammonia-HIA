@@ -193,7 +193,7 @@ def _worker(task):
     base = dict(log_n_H2=task['log_n'], T_cloud=task['T_cloud'], log_N_dv=task['log_ndv'],
                 clump_dv=task['dv'], XNH3=task['XNH3'], numberdensity=task['numberdensity'],
                 radius_sphere=task['radius_sphere'], N_NH3_target=task['N_NH3_target'],
-                vturb=task['vturb'], nrays=NRAYS, resolution=RESOLUTION,
+                vturb=task['vturb'], nrays=task.get('nrays', NRAYS), resolution=RESOLUTION,
                 max_NLTE=MAX_NLTE, spectrum=SPECTRUM,
                 fov_pad_factor=FOV_PAD_FACTOR, _key=task['key'])
     try:
@@ -203,7 +203,7 @@ def _worker(task):
             T_cloud=task['T_cloud'], max_NLTE=MAX_NLTE,
             radius_sphere=task['radius_sphere'],
             image_lines={'21': p.FREQ_HZ['2,1']},
-            nrays=NRAYS, resolution=RESOLUTION, spectrum=SPECTRUM,
+            nrays=task.get('nrays', NRAYS), resolution=RESOLUTION, spectrum=SPECTRUM,
             fov_pad_factor=FOV_PAD_FACTOR, mesh=task.get('mesh'))
 
         hfs = analyse_spectra(odir=task['odir'], XNH3=task['XNH3'],
@@ -243,7 +243,7 @@ def _worker(task):
 
 
 def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
-          dry_run=False, points=None, mesh=None):
+          dry_run=False, points=None, mesh=None, nrays=None):
     """points: optional explicit (log_n, T, log_ndv) list, overriding
     grid_points() -- lets a second, offset/denser grid reuse this exact
     resumable build machinery (see build_lut_offset.py) without
@@ -278,7 +278,8 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
                           XNH3=XNH3_FIDUCIAL, numberdensity=n,
                           radius_sphere=radius_sphere, N_NH3_target=N,
                           vturb=p.fwhm_kms_to_vturb_ms(dv_kms),
-                          wdir=WDIR, odir=odir, key=key, mesh=mesh))
+                          wdir=WDIR, odir=odir, key=key, mesh=mesh,
+                          nrays=NRAYS if nrays is None else nrays))
 
     # Storage guard: 500 channels x 3 lines x float32, plus the shared axis.
     per_model_kb = (500 * len(LINES) * 4) / 1024.0
