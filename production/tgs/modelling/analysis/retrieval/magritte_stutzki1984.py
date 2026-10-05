@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt
 
 import nh3hia.stutzki.params as sp
 import nh3hia.hyperfine as hf
+from nh3hia.lut import posterior as post
 from nh3hia.lut.interpolator import LutInterpolator, chi2_retrieve, RATIO_KEYS, RATIO_21
 from nh3hia.stutzki.physics import eta_f as calc_eta_f, clump_count_K, clump_count_required, physically_consistent
 from nh3hia import paths
@@ -155,6 +156,11 @@ def main():
 
         best_idx, chi2_best, chi2_all = chi2_retrieve(interp, pts, ratio_grid, obs_vec, sigma_vec)
         log_n_fit, T_fit, ndv_fit = pts[best_idx]
+
+        # grid posterior (nh3hia/lut/posterior.py): default model-error floor
+        # plus 0% / 10% sensitivity runs
+        post_stats = post.posterior_block(pts, np.column_stack([ratio_grid[k] for k in RATIO_KEYS]),
+                                          obs_vec, sigma_vec, extra={'R21_11': ratio_grid[RATIO_21]})
         A_MAIN_fit = float(ratio_grid['A_MAIN'][best_idx])
         R21_11_pred = float(ratio_grid[RATIO_21][best_idx])
         model_ratios = {k: float(ratio_grid[k][best_idx]) for k in RATIO_KEYS}
@@ -167,6 +173,12 @@ def main():
         K_pred = clump_count_K(T_fit, 10 ** log_n_fit, ef, dist, dv_obs, DV_CLUMP_KMS) if ef and ef > 0 else np.nan
         consistent, detail = physically_consistent(T_fit, 10 ** log_n_fit, T_B_obs, A_MAIN_fit,
                                                     dv_obs, DV_CLUMP_KMS, dist)
+        # posterior with S85's consistency checks as a hard prior
+        post_stats.update(post.posterior_block(
+            pts, np.column_stack([ratio_grid[k] for k in RATIO_KEYS]), obs_vec, sigma_vec,
+            extra={'R21_11': ratio_grid[RATIO_21]}, f_models=((post.DEFAULT_F_MODEL, 'postphys_'),),
+            prior_mask=post.consistency_prior(pts, ratio_grid['A_MAIN'], T_B_obs, dv_obs, dist,
+                                              DV_CLUMP_KMS)))
 
         # --- spectrum reconstructions ---
         v = np.linspace(-32, 32, 800)
@@ -229,6 +241,12 @@ def main():
             f"$\\eta_f$ = {ef:.3f}" + ("  (>1, UNPHYSICAL)" if (ef and ef > 1) else ""),
             f"K predicted = {K_pred:.2f}   K required = {K_req:.2f}",
             f"physically consistent: {'YES' if consistent else 'NO'}",
+            "",
+            f"posterior (5% model err), 68%:",
+            f" log n  {post_stats['post_log_n_H2_p50']:.2f} [{post_stats['post_log_n_H2_p16']:.2f}, {post_stats['post_log_n_H2_p84']:.2f}]"
+            f"  P(log n>=6) {post_stats['post_P_high_branch']:.2f}",
+            f" T_k    {post_stats['post_T_k_p50']:.1f} [{post_stats['post_T_k_p16']:.1f}, {post_stats['post_T_k_p84']:.1f}]",
+            f" logN/dv {post_stats['post_log_N_dv_p50']:.2f} [{post_stats['post_log_N_dv_p16']:.2f}, {post_stats['post_log_N_dv_p84']:.2f}]",
         ]
         ax_txt.text(0.02, 0.95, "\n".join(lines), va='top', ha='left', fontsize=9.5,
                     transform=ax_txt.transAxes, family='monospace')
@@ -242,6 +260,11 @@ def main():
             vals += [t321['ratio_theor'], t321['ratio_obs']]
             colors += ['gray', 'black']
         ax21.bar(labels, vals, color=colors, alpha=0.85)
+        p16, p50, p84 = (post_stats['post_R21_11_p16'], post_stats['post_R21_11_p50'],
+                         post_stats['post_R21_11_p84'])
+        ax21.errorbar([0], [p50], yerr=[[p50 - p16], [p84 - p50]], fmt='o', color='k', ms=4,
+                      capsize=4, label='posterior median, 68%')
+        ax21.legend(fontsize=7, loc='upper right')
         ax21.set_ylabel(r'$T_B(2,1)/T_B(1,1)$', fontsize=9)
         ax21.set_title('(2,1)/(1,1): held-out prediction', fontsize=10)
         for i, val in enumerate(vals):
@@ -278,6 +301,11 @@ def main():
             R21_11_predicted=R21_11_pred,
             R21_11_theor=t321['ratio_theor'] if t321 else np.nan,
             R21_11_observed=t321['ratio_obs'] if t321 else np.nan,
+            R21_11_observed_err=t321['ratio_obs_err'] if t321 else np.nan,
+            R21_11_post_z=post.predictive_z([post_stats['post_R21_11_p16'], post_stats['post_R21_11_p50'],
+                                             post_stats['post_R21_11_p84']],
+                                            t321['ratio_obs'], t321['ratio_obs_err']) if t321 else np.nan,
+            **post_stats,
             pinned_log_n_lo=np.isclose(log_n_fit, interp.axis_lo[0], atol=0.05),
             pinned_log_n_hi=np.isclose(log_n_fit, interp.axis_hi[0], atol=0.05),
             pinned_T_lo=np.isclose(T_fit, interp.axis_lo[1], atol=0.3),

@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 
 import nh3hia.w33.params as p
 import nh3hia.w33.observed as wr
+from nh3hia.lut import posterior as post
 from nh3hia.lut.interpolator import chi2_retrieve
 from nh3hia.stutzki.physics import eta_f as calc_eta_f, clump_count_K, clump_count_required, physically_consistent
 from analysis.retrieval.magritte_stutzki1984 import gaussian_spectrum, chi2_slice_plot
@@ -95,6 +96,8 @@ def main():
         log_n_fit, T_fit, ndv_fit = pts[best_idx]
         A_MAIN_fit = float(ratio_grid['A_MAIN'][best_idx])
         R21_11_pred = float(ratio_grid[RATIO_21][best_idx])
+        post_stats = post.posterior_block(pts, np.column_stack([ratio_grid[k] for k in RATIO_KEYS]),
+                                          obs_vec, sigma_vec, extra={'R21_11': ratio_grid[RATIO_21]})
         model_ratios = {k: float(ratio_grid[k][best_idx]) for k in RATIO_KEYS}
 
         T_B_obs = p.LINES[source]['1,1']['T_mb']
@@ -105,6 +108,12 @@ def main():
         K_pred = clump_count_K(T_fit, 10 ** log_n_fit, ef, dist, dv_obs, DV_CLUMP_KMS) if ef and ef > 0 else np.nan
         consistent, detail = physically_consistent(T_fit, 10 ** log_n_fit, T_B_obs, A_MAIN_fit,
                                                     dv_obs, DV_CLUMP_KMS, dist)
+        # posterior with S85's consistency checks as a hard prior
+        post_stats.update(post.posterior_block(
+            pts, np.column_stack([ratio_grid[k] for k in RATIO_KEYS]), obs_vec, sigma_vec,
+            extra={'R21_11': ratio_grid[RATIO_21]}, f_models=((post.DEFAULT_F_MODEL, 'postphys_'),),
+            prior_mask=post.consistency_prior(pts, ratio_grid['A_MAIN'], T_B_obs, dv_obs, dist,
+                                              DV_CLUMP_KMS)))
 
         v = np.linspace(-32, 32, 800)
         obs_amps = [T_B_obs * (obs['R_10'] or 0), T_B_obs * (obs['R_12'] or 0), T_B_obs,
@@ -168,6 +177,11 @@ def main():
             vals += [R21_11_obs]
             colors += ['black']
         ax21.bar(labels, vals, color=colors, alpha=0.85)
+        p16, p50, p84 = (post_stats['post_R21_11_p16'], post_stats['post_R21_11_p50'],
+                         post_stats['post_R21_11_p84'])
+        ax21.errorbar([0], [p50], yerr=[[p50 - p16], [p84 - p50]], fmt='o', color='k', ms=4,
+                      capsize=4, label='posterior median, 68%')
+        ax21.legend(fontsize=7, loc='upper right')
         ax21.set_ylabel(r'$T_B(2,1)/T_B(1,1)$', fontsize=9)
         ax21.set_title('(2,1)/(1,1): held-out prediction', fontsize=10)
         for i, val in enumerate(vals):
@@ -199,6 +213,12 @@ def main():
             T_B_obs=T_B_obs, T_B_theor=A_MAIN_fit, eta_f=ef,
             K_predicted=K_pred, K_required=K_req, physically_consistent=consistent,
             R21_11_predicted=R21_11_pred, R21_11_observed=R21_11_obs,
+            R21_11_observed_err=err_full.get('R_21_11', np.nan),
+            R21_11_post_z=(post.predictive_z([post_stats['post_R21_11_p16'], post_stats['post_R21_11_p50'],
+                                              post_stats['post_R21_11_p84']], R21_11_obs,
+                                             err_full.get('R_21_11', np.nan))
+                           if (R21_11_obs) is not None else np.nan),
+            **post_stats,
             any_maser_at_fit=bool(any_maser_sorted[best_idx]),
             pinned_log_n_lo=np.isclose(log_n_fit, log_n_ax.min(), atol=0.05),
             pinned_log_n_hi=np.isclose(log_n_fit, log_n_ax.max(), atol=0.05),
