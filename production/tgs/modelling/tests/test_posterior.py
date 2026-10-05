@@ -1,6 +1,9 @@
 """Tests for the grid posterior (nh3hia.lut.posterior)."""
 import numpy as np
 import pytest
+from scipy.stats import norm
+
+Z84 = norm.ppf(0.84)   # the 16/84% quantiles sit at +-0.9945 sigma
 
 from nh3hia.lut import posterior as P
 from nh3hia.stutzki import physics as ph
@@ -12,7 +15,7 @@ def test_gaussian_posterior_recovers_mean_and_width():
     pts = np.column_stack([x, np.zeros_like(x), np.zeros_like(x)])
     ll = P.log_likelihood(x[:, None], np.array([0.7]), np.array([0.5]), f_model=0.0)
     q = P.weighted_quantiles(x, P.weights_from_loglike(ll))
-    assert q == pytest.approx([0.7 - 0.5, 0.7, 0.7 + 0.5], abs=2e-3)
+    assert q == pytest.approx([0.7 - 0.5 * Z84, 0.7, 0.7 + 0.5 * Z84], abs=1e-3)
 
 
 def test_uses_raw_not_reduced_chi2():
@@ -21,7 +24,7 @@ def test_uses_raw_not_reduced_chi2():
     ll = P.log_likelihood(np.column_stack([x, x]), np.array([0.0, 0.0]),
                           np.array([1.0, 1.0]), f_model=0.0)
     q = P.weighted_quantiles(x, P.weights_from_loglike(ll))
-    assert (q[2] - q[0]) / 2 == pytest.approx(1 / np.sqrt(2), rel=2e-3)
+    assert (q[2] - q[0]) / 2 == pytest.approx(Z84 / np.sqrt(2), rel=2e-3)
 
 
 def test_branch_probabilities():
