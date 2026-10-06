@@ -54,7 +54,34 @@ def _to_vec(d, keys):
     return np.array([np.nan if d[k] is None else d[k] for k in keys])
 
 
+def scale_fonts(fig, factor, title_factor=None, tick_factor=1.0):
+    """Scale the text of a figure: axes titles by `title_factor` (default
+    `factor`), tick labels by `tick_factor` (default untouched), everything
+    else (axis labels, legends, annotations, colorbar labels) by `factor`."""
+    import matplotlib.text as mtext
+    title_factor = factor if title_factor is None else title_factor
+    ticks, titles = set(), set()
+    for ax in fig.axes:
+        ticks.update(id(t) for t in ax.get_xticklabels(which='both') + ax.get_yticklabels(which='both'))
+        ticks.update(id(ax.xaxis.get_offset_text()) for _ in [0])
+        ticks.update(id(ax.yaxis.get_offset_text()) for _ in [0])
+        titles.update(id(t) for t in (ax.title, ax._left_title, ax._right_title))
+    for t in fig.findobj(mtext.Text):
+        f = tick_factor if id(t) in ticks else title_factor if id(t) in titles else factor
+        t.set_fontsize(t.get_fontsize() * f)
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--font-scale', type=float, default=1.0,
+                    help='multiply all figure font sizes (default 1.0)')
+    ap.add_argument('--title-scale', type=float, default=None, help='axes-title font factor (default: --font-scale)')
+    ap.add_argument('--tick-scale', type=float, default=1.0, help='tick-label font factor (default 1.0)')
+    ap.add_argument('--fig-scale', type=float, default=1.0, help='scale the canvas size, for room')
+    ap.add_argument('--only', default=None, help='comma-separated sources to run (default: all)')
+    ap.add_argument('--suffix', default='', help='suffix for output file names, e.g. _large')
+    args = ap.parse_args()
     os.makedirs(OUTDIR, exist_ok=True)
     print("building interpolator + dense query grid...", flush=True)
     interp = LutInterpolator()
@@ -68,6 +95,8 @@ def main():
 
     summary = []
     for source in wr.W33_SOURCES:
+        if args.only and source not in args.only.split(','):
+            continue
         gate = wr.quadrant_gate(source)
         print(f"=== {source}: quadrant {gate['quadrant']} ({gate['label']}) ===", flush=True)
         if gate['quadrant'] != 'II':
@@ -189,7 +218,11 @@ def main():
                         r'log $n_{H_2}$', r'log($N_{NH_3}/\Delta v$)', (log_n_fit, ndv_fit), chi2_best,
                         None, title=r'log(N/dv) vs log($n_{H_2}$), profile min over $T_k$')
 
-        out_png = os.path.join(OUTDIR, f'{source}.png')
+        if args.font_scale != 1.0 or args.title_scale or args.tick_scale != 1.0:
+            scale_fonts(fig, args.font_scale, args.title_scale, args.tick_scale)
+        if args.fig_scale != 1.0:
+            fig.set_size_inches(*(np.array(fig.get_size_inches()) * args.fig_scale))
+        out_png = os.path.join(OUTDIR, f'{source}{args.suffix}.png')
         plt.savefig(out_png, dpi=140)
         plt.close(fig)
         print(f"  saved {out_png}  chi2={chi2_best:.3f}  log_n={log_n_fit:.3f}  T={T_fit:.1f}  "
@@ -217,7 +250,7 @@ def main():
         ))
 
     df = pd.DataFrame(summary)
-    csv_path = os.path.join(OUTDIR, 'summary.csv')
+    csv_path = os.path.join(OUTDIR, f'summary{args.suffix}.csv')
     df.to_csv(csv_path, index=False)
     print(f"\nsaved {csv_path}  ({len(df)} sources, {df.fittable.sum()} fittable)")
     fit = df[df.fittable]
