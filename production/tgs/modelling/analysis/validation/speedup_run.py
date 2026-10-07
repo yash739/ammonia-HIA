@@ -61,6 +61,14 @@ def plan(which):
         jobs += [(s, hot, None) for s in N.LEVEL_LADDER]
     if which in ('ladder_prec', 'all'):
         jobs += [(s, prec_nodes, 2000 if s.endswith('prec8') else None) for s in N.PREC_LADDER]
+    if which == 'priority':
+        # what the go/no-go needs, in order: level truncation (hot/masing + high column), precision ladder,
+        # CloseLines cutoff on the most exposed nodes
+        hot_ = [p for p in pts if p[1] >= 42.0 and p[0] >= 7.5] + N.STRATA['masing']
+        jobs += [(s_, hot_, None) for s_ in ('close+lev32', 'close+lev40')]
+        jobs += plan('extra')
+        jobs += [(s_, prec_nodes, 2000 if s_.endswith('prec8') else None) for s_ in N.PREC_LADDER]
+        jobs += [(s_, N.STRATA['masing'] + N.STRATA['hot_dense'][:3], None) for s_ in ('close+dist5', 'close+dist20')]
     if which in ('extra', 'all_extra'):
         # Why does lev36 move the cold, very-high-column node (6.5, 18 K, 16.25) by 2-4%? Separate
         # truncation from convergence path with a tight-precision ladder (1e-8, up to 2000 iterations).

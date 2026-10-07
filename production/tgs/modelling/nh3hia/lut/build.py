@@ -279,7 +279,8 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
     resumable build machinery (see build_lut_offset.py) without
     duplicating it.
 
-    solver: solver profile (nh3hia.model3d.solver_profiles); anything but 'legacy'
+    solver: solver profile (nh3hia.model3d.solver_profiles), or a callable
+    (log_n, T, log_ndv) -> profile string for region-dependent profiles; anything but 'legacy'
     adds the mesh_kind/solver_profile provenance columns, so use a fresh `odir`.
     save_populations: also write populations/<key>.npz (float32 fractional level
     populations, r/r_out, NH3 abundance per mesh point). wdir: Magritte working dir
@@ -321,7 +322,8 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
                           vturb=p.fwhm_kms_to_vturb_ms(dv_kms),
                           wdir=wdir or WDIR, odir=odir, key=key, mesh=mesh,
                           nrays=NRAYS if nrays is None else nrays,
-                          solver=solver, keep_model_file=keep_model_file,
+                          solver=solver(log_n, T, log_ndv) if callable(solver) else solver,
+                          keep_model_file=keep_model_file,
                           save_populations=save_populations,
                           **({'max_nlte': max_nlte} if max_nlte else {})))
 
@@ -338,7 +340,7 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
         return
 
     from nh3hia.model3d.solver_profiles import canonical as _canon
-    header_cols = HEADER if _canon(solver) == 'legacy' else HEADER_PROVENANCE
+    header_cols = HEADER if (not callable(solver) and _canon(solver) == 'legacy') else HEADER_PROVENANCE
     pop_dir = os.path.join(odir, 'populations')
     if save_populations:
         os.makedirs(pop_dir, exist_ok=True)

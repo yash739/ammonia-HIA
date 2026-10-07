@@ -151,3 +151,13 @@ def apply_after_read(model, profile):
     if s['max_interp_diff'] is not None:
         P.max_interpolation_diff = s['max_interp_diff']
     return s
+
+
+def regional(fast, safe, max_log_ndv_fast=15.8):
+    """Region rule from the validation (production/output_speedup_tests/report.md): level truncation
+    is accurate to <= 0.4% for log N/dv <= 15.8 but moves the cold, very-high-column nodes by 2-4%
+    (levels 37-48 matter when the lines are that thick), so the fast profile (with lev36) is used
+    only there and `safe` (all 48 levels) above it. Returns a callable for build(solver=...)."""
+    def rule(log_n, T, log_ndv):
+        return fast if log_ndv <= max_log_ndv_fast + 1e-9 else safe
+    return rule
