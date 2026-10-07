@@ -199,13 +199,13 @@ def _worker(task):
                 clump_dv=task['dv'], XNH3=task['XNH3'], numberdensity=task['numberdensity'],
                 radius_sphere=task['radius_sphere'], N_NH3_target=task['N_NH3_target'],
                 vturb=task['vturb'], nrays=task.get('nrays', NRAYS), resolution=RESOLUTION,
-                max_NLTE=MAX_NLTE, spectrum=SPECTRUM,
+                max_NLTE=task.get('max_nlte', MAX_NLTE), spectrum=SPECTRUM,
                 fov_pad_factor=FOV_PAD_FACTOR, _key=task['key'])
     try:
         hi, conv, tau, extra, npoints, nboundary = run_model(
             wdir=task['wdir'], odir=task['odir'], XNH3=task['XNH3'],
             numberdensity=task['numberdensity'], vturb=task['vturb'],
-            T_cloud=task['T_cloud'], max_NLTE=MAX_NLTE,
+            T_cloud=task['T_cloud'], max_NLTE=task.get('max_nlte', MAX_NLTE),
             radius_sphere=task['radius_sphere'],
             image_lines={'21': p.FREQ_HZ['2,1']},
             nrays=task.get('nrays', NRAYS), resolution=RESOLUTION, spectrum=SPECTRUM,
@@ -217,7 +217,7 @@ def _worker(task):
         hfs = analyse_spectra(odir=task['odir'], XNH3=task['XNH3'],
                                numberdensity=task['numberdensity'], vturb=task['vturb'],
                                T_cloud=task['T_cloud'], radius_sphere=task['radius_sphere'],
-                               max_NLTE=MAX_NLTE, save_plots=False)
+                               max_NLTE=task.get('max_nlte', MAX_NLTE), save_plots=False)
 
         # (2,2) and (2,1) main-line peaks -- both already imaged, so free.
         v22, I22 = extra['22']
@@ -272,7 +272,8 @@ def coarse_to_fine(points):
 
 def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
           dry_run=False, points=None, mesh=None, nrays=None, solver='legacy',
-          keep_model_file=True, save_populations=False, wdir=None, order=None):
+          keep_model_file=True, save_populations=False, wdir=None, order=None,
+          max_nlte=None):
     """points: optional explicit (log_n, T, log_ndv) list, overriding
     grid_points() -- lets a second, offset/denser grid reuse this exact
     resumable build machinery (see build_lut_offset.py) without
@@ -321,7 +322,8 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
                           wdir=wdir or WDIR, odir=odir, key=key, mesh=mesh,
                           nrays=NRAYS if nrays is None else nrays,
                           solver=solver, keep_model_file=keep_model_file,
-                          save_populations=save_populations))
+                          save_populations=save_populations,
+                          **({'max_nlte': max_nlte} if max_nlte else {})))
 
     # Storage guard: 500 channels x 3 lines x float32, plus the shared axis.
     per_model_kb = (500 * len(LINES) * 4) / 1024.0

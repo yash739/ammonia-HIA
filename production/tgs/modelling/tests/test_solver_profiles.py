@@ -35,7 +35,7 @@ def test_tokens_and_canonical_order():
     assert sp.file_tag('close') == '_spclose'
 
 
-@pytest.mark.parametrize('bad', ['fast', 'close+nq', 'close5', 'lev36x', 'prec'])
+@pytest.mark.parametrize('bad', ['fast', 'close+nq', 'close5', 'lev36x', 'prec', 'lev'])
 def test_bad_tokens_rejected(bad):
     with pytest.raises(ValueError):
         sp.parse(bad)
@@ -73,3 +73,10 @@ def test_coarse_to_fine_order_is_a_permutation_with_coarse_lattice_first():
     coarse = [p for p in pts if all(x % 2 == 0 or x == m for x, m in zip(p, (4, 3, 2)))]
     assert set(o[:len(coarse)]) == set(coarse)
     assert coarse_to_fine(pts) == o                                    # deterministic
+
+
+def test_generated_truncation_reproduces_the_tracked_36_level_file(tmp_path):
+    out = tmp_path / 'g36.txt'
+    sp.truncate_lamda(os.path.join(paths.TGS, sp.LAMDA_FULL), 36, str(out))
+    assert out.read_text() == open(os.path.join(paths.TGS, sp.LAMDA_36)).read()
+    assert sp.parse('close+lev40')['lamda'] == 'p-nh3@loreau_40lev.dat.txt'

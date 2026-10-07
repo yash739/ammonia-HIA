@@ -10,8 +10,8 @@ Tokens (each justified and validated in production/output_speedup_tests/report.m
                (`sum_opacity_emissivity_over_all_lines = False`). This is Magritte's
                upstream default; the vendored copy carries a local edit that flips
                it to True, which sums all 115 lines at every ray step.
-  lev36        LAMDA file truncated to the lowest 36 levels (77 of 115 lines),
-               `p-nh3@loreau_36lev.dat.txt`
+  lev<N>       LAMDA file truncated to the lowest N levels (lev36 = 77 of 115 lines),
+               `p-nh3@loreau_<N>lev.dat.txt` (lev36 is tracked; others are generated on demand)
   nq<N>        N Gauss-Hermite quadrature points per line (legacy 20), e.g. nq12
   prec<E>      population-change stop threshold 1e-<E> (legacy 1e-6), e.g. prec4
   ngfixed      fixed-order Ng acceleration instead of Magritte's adaptive criterion
@@ -29,11 +29,15 @@ LEGACY = 'legacy'
 LAMDA_FULL = 'p-nh3@loreau.dat.txt'
 LAMDA_36 = 'p-nh3@loreau_36lev.dat.txt'
 
+
+def lamda_name(n_levels):
+    return LAMDA_FULL if n_levels is None else f'p-nh3@loreau_{n_levels}lev.dat.txt'
+
 _DEFAULTS = dict(sum_all_lines=True, lamda=LAMDA_FULL, nquads=20, pop_prec=1.0e-6,
                  ng_adaptive=None, ng_mem=None, min_rel_pop=None, max_interp_diff=None,
                  max_dist=None)
 
-_TOKEN = re.compile(r'^(close|lev36|ngfixed|nq|prec|ngmem|minrel|interp|dist)([0-9.]*)$')
+_TOKEN = re.compile(r'^(close|lev|ngfixed|nq|prec|ngmem|minrel|interp|dist)([0-9.]*)$')
 
 
 def parse(profile):
@@ -46,15 +50,15 @@ def parse(profile):
         if not m:
             raise ValueError(f"unknown solver-profile token {tok!r} in {profile!r}")
         kind, val = m.groups()
-        if kind in ('close', 'lev36', 'ngfixed'):
+        if kind in ('close', 'ngfixed'):
             if val:
                 raise ValueError(f"token {tok!r} takes no value")
         elif not val:
             raise ValueError(f"token {tok!r} needs a value")
         if kind == 'close':
             s['sum_all_lines'] = False
-        elif kind == 'lev36':
-            s['lamda'] = LAMDA_36
+        elif kind == 'lev':
+            s['lamda'] = lamda_name(int(val))
         elif kind == 'nq':
             s['nquads'] = int(val)
         elif kind == 'prec':
@@ -86,8 +90,36 @@ def file_tag(profile):
     return '' if c == LEGACY else '_sp' + c.replace('+', '-')
 
 
+def truncate_lamda(src, n_levels, out):
+    """Write the lowest `n_levels` levels of a LAMDA file with the radiative and collisional
+    transitions among them (transition numbers renumbered; level and line order preserved,
+    so the (2,2) line stays at index 6)."""
+    L = open(src).read().split('\n')
+    idx = lambda t: next(k for k, l in enumerate(L) if l.startswith(t))
+    a, lv, nr, tr, cp, ct, ctr = (idx(t) for t in (
+        '! NUMBER OF ENERGY LEVELS', '! LEVEL |', '! NUMBER OF RADIATIVE', '! TRANS | UP',
+        '! NUMBER OF COLLISION PARTNERS', '! NUMBER OF COLLISIONAL', '! TRANS | UP  | LOW | RATE'))
+    levels = [l for l in L[lv + 1:nr] if l.strip()]
+    rad = [l for l in L[tr + 1:cp] if l.strip()]
+    col = [l for l in L[ctr + 1:] if l.strip()]
+    keep = lambda l: int(l.split()[1]) <= n_levels
+    ren = lambda ls: [re.sub(r'^\s*\d+', f'{k + 1:7d}', l) for k, l in enumerate(ls)]
+    rad2, col2 = ren([l for l in rad if keep(l)]), ren([l for l in col if keep(l)])
+    open(out, 'w').write('\n'.join(
+        L[:a + 1] + [str(n_levels), L[lv]] + levels[:n_levels] + [L[nr], str(len(rad2)), L[tr]] + rad2
+        + L[cp:ct] + [L[ct], str(len(col2))] + L[ct + 2:ctr + 1] + col2 + ['']))
+
+
 def lamda_path(wdir, profile):
-    return os.path.join(wdir, parse(profile)['lamda'])
+    """LAMDA file for the profile inside `wdir`; truncated variants are generated from the
+    full file on first use."""
+    path = os.path.join(wdir, parse(profile)['lamda'])
+    if not os.path.exists(path):
+        m = re.match(r'p-nh3@loreau_(\d+)lev\.dat\.txt$', os.path.basename(path))
+        if not m:
+            raise FileNotFoundError(path)
+        truncate_lamda(os.path.join(wdir, LAMDA_FULL), int(m.group(1)), path)
+    return path
 
 
 def apply_before_write(model, profile):
