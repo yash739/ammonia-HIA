@@ -50,6 +50,9 @@ def main():
     ap.add_argument('--processes', type=int, default=3)
     ap.add_argument('--n-nodes', type=int, default=24)
     ap.add_argument('--only', default=None)
+    ap.add_argument('--max-gold-wall', type=float, default=None,
+                    help='drop nodes whose gold wall time exceeds this [s] (keeps reference-mesh runs affordable)')
+    ap.add_argument('--no-extra', action='store_true', help='skip the nrays=24 sensitivity run')
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
     os.environ.setdefault('OMP_NUM_THREADS', '4')
@@ -58,8 +61,12 @@ def main():
     solver = (solver_profiles.regional('close+lev36+nq12+prec4', 'close+nq12+prec4')
               if a.solver == 'regional' else a.solver)
     pts = mesh_nodes(a.n_nodes)
+    if a.max_gold_wall:
+        from analysis.validation.speedup_run import gold_wall
+        w = gold_wall(pts)
+        pts = [p for p in pts if w[p] <= a.max_gold_wall]
     runs = [(name, 12, pts) for name in MESHES]
-    runs += [('radial12x140', 24, pts[:: max(1, len(pts) // 4)][:4])]       # angular-quadrature sensitivity
+    runs += [] if a.no_extra else [('radial12x140', 24, pts[:: max(1, len(pts) // 4)][:4])]       # angular-quadrature sensitivity
     for name, nrays, nodes in runs:
         if a.only and name not in a.only.split(','):
             continue

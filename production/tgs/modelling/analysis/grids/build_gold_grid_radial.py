@@ -28,7 +28,9 @@ def full_gold_points():
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--solver', required=True)
+    ap.add_argument('--solver', required=True,
+                    help="profile string, or 'regional' = close+lev36+nq12+prec4 up to log N/dv 15.8, "
+                         "close+nq12+prec4 (all 48 levels) above it")
     ap.add_argument('--n-shell', type=int, default=12)
     ap.add_argument('--base', type=int, default=140)
     ap.add_argument('--processes', type=int, default=3)
@@ -47,6 +49,9 @@ if __name__ == '__main__':
     for name in os.listdir(paths.TGS):
         if name.startswith('p-nh3@loreau') and not os.path.exists(os.path.join(wdir, name)):
             os.symlink(os.path.join(paths.TGS, name), os.path.join(wdir, name))
-    b.build(odir=a.odir, processes=a.processes, points=pts, mesh=mesh, solver=a.solver, wdir=wdir,
+    from nh3hia.model3d import solver_profiles
+    solver = (solver_profiles.regional('close+lev36+nq12+prec4', 'close+nq12+prec4')
+              if a.solver == 'regional' else a.solver)
+    b.build(odir=a.odir, processes=a.processes, points=pts, mesh=mesh, solver=solver, wdir=wdir,
             keep_model_file=False, save_populations=True, order='coarse_to_fine', limit=a.limit,
             dry_run=a.dry_run)
