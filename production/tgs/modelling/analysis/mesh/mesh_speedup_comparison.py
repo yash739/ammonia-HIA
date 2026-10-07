@@ -45,7 +45,8 @@ def mesh_dir(name, nrays=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--solver', required=True)
+    ap.add_argument('--solver', required=True,
+                    help="profile string, or 'regional' = lev36 up to log N/dv 15.8, all 48 levels above")
     ap.add_argument('--processes', type=int, default=3)
     ap.add_argument('--n-nodes', type=int, default=24)
     ap.add_argument('--only', default=None)
@@ -53,6 +54,9 @@ def main():
     a = ap.parse_args()
     os.environ.setdefault('OMP_NUM_THREADS', '4')
     make_wdir()
+    from nh3hia.model3d import solver_profiles
+    solver = (solver_profiles.regional('close+lev36+nq12+prec4', 'close+nq12+prec4')
+              if a.solver == 'regional' else a.solver)
     pts = mesh_nodes(a.n_nodes)
     runs = [(name, 12, pts) for name in MESHES]
     runs += [('radial12x140', 24, pts[:: max(1, len(pts) // 4)][:4])]       # angular-quadrature sensitivity
@@ -60,7 +64,7 @@ def main():
         if a.only and name not in a.only.split(','):
             continue
         print(f"\n##### mesh {name} nrays={nrays}: {len(nodes)} nodes", flush=True)
-        b.build(odir=mesh_dir(name, nrays), processes=a.processes, points=nodes, solver=a.solver,
+        b.build(odir=mesh_dir(name, nrays), processes=a.processes, points=nodes, solver=solver,
                 mesh=MESHES[name], nrays=nrays, wdir=WDIR, keep_model_file=False,
                 save_populations=True, dry_run=a.dry_run)
 
