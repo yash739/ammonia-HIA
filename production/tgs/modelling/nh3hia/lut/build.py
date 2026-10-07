@@ -137,6 +137,10 @@ HEADER = [
     'spectrum', 'fov_pad_factor',
     'wall_s', 'Status', 'Error_Msg',
 ]
+# Provenance columns, written ONLY by builds that pass a non-legacy solver profile (into a
+# new output dir); the gold CSV keeps HEADER so appending to it can never misalign.
+HEADER_PROVENANCE = HEADER + ['mesh_kind', 'solver_profile']
+POPULATION_KEYS = ('populations', 'r_over_rout', 'abundance')
 
 
 def grid_axes():
@@ -184,7 +188,8 @@ def _worker(task):
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
     os.environ.setdefault("MKL_NUM_THREADS", "2")
 
-    from nh3hia.model3d.sphere import run_model
+    from nh3hia.model3d.sphere import run_model, mesh_tag
+    from nh3hia.model3d.solver_profiles import canonical as solver_canonical
     from nh3hia.spectral_fit import analyse_spectra
     from nh3hia.spectrum_utils import native_peak_tmb, line_peak_tmb, EXTRACTOR_VERSION
     import nh3hia.hyperfine as hf
@@ -204,7 +209,10 @@ def _worker(task):
             radius_sphere=task['radius_sphere'],
             image_lines={'21': p.FREQ_HZ['2,1']},
             nrays=task.get('nrays', NRAYS), resolution=RESOLUTION, spectrum=SPECTRUM,
-            fov_pad_factor=FOV_PAD_FACTOR, mesh=task.get('mesh'))
+            fov_pad_factor=FOV_PAD_FACTOR, mesh=task.get('mesh'),
+            solver=task.get('solver', 'legacy'),
+            keep_model_file=task.get('keep_model_file', True),
+            save_populations=task.get('save_populations', False))
 
         hfs = analyse_spectra(odir=task['odir'], XNH3=task['XNH3'],
                                numberdensity=task['numberdensity'], vturb=task['vturb'],
@@ -223,6 +231,9 @@ def _worker(task):
             vv, ii = extra[f'{lbl}_{SPECTRUM}']
             spectra[lbl] = np.asarray(ii, dtype=np.float32)
         spectra['velos'] = np.asarray(extra['11_' + SPECTRUM][0], dtype=np.float32)
+        for k in POPULATION_KEYS:
+            if k in extra:
+                spectra[k] = extra[k]
 
         row = dict(base)
         row.update({k: hfs[k] for k in hfs if k != 'N_NH3'})
@@ -235,7 +246,9 @@ def _worker(task):
             tau_main=float(tau), halting_iter=int(hi), final_convergence=float(conv),
             convergence_ok=bool(conv >= CONV_THRESHOLD),
             npoints=int(npoints), nboundary=int(nboundary),
-            wall_s=round(time.time() - t0, 1), Status='SUCCESS')
+            wall_s=round(time.time() - t0, 1), Status='SUCCESS',
+            mesh_kind=mesh_tag(task.get('mesh')) or 'cube',
+            solver_profile=solver_canonical(task.get('solver', 'legacy')))
         return row, spectra
     except Exception as e:
         base.update(Status='FAILED', Error_Msg=str(e)[:400],
@@ -243,12 +256,34 @@ def _worker(task):
         return base, None
 
 
+def coarse_to_fine(points):
+    """Reorder a rectangular cross-product so that a usable, interpolatable sub-table
+    exists at every moment: first the coarse lattice (every 2nd index on each axis, plus
+    each axis's last point), then points odd in exactly one axis, then two, then three.
+    Stable within a level, so the result is deterministic."""
+    axes = [sorted({p_[i] for p_ in points}) for i in range(3)]
+    idx = [{v: k for k, v in enumerate(ax)} for ax in axes]
+
+    def odd(i, v):
+        k = idx[i][v]
+        return int(k % 2 == 1 and k != len(axes[i]) - 1)
+    return sorted(points, key=lambda p_: sum(odd(i, p_[i]) for i in range(3)))
+
+
 def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
-          dry_run=False, points=None, mesh=None, nrays=None):
+          dry_run=False, points=None, mesh=None, nrays=None, solver='legacy',
+          keep_model_file=True, save_populations=False, wdir=None, order=None):
     """points: optional explicit (log_n, T, log_ndv) list, overriding
     grid_points() -- lets a second, offset/denser grid reuse this exact
     resumable build machinery (see build_lut_offset.py) without
-    duplicating it."""
+    duplicating it.
+
+    solver: solver profile (nh3hia.model3d.solver_profiles); anything but 'legacy'
+    adds the mesh_kind/solver_profile provenance columns, so use a fresh `odir`.
+    save_populations: also write populations/<key>.npz (float32 fractional level
+    populations, r/r_out, NH3 abundance per mesh point). wdir: Magritte working dir
+    (model_files/ cache + LAMDA files); defaults to the shared one. order='coarse_to_fine'
+    reorders the points (see coarse_to_fine)."""
     os.makedirs(os.path.join(odir, 'results'), exist_ok=True)
     os.makedirs(os.path.join(odir, 'fits'), exist_ok=True)
     os.makedirs(os.path.join(odir, 'images'), exist_ok=True)
@@ -257,6 +292,10 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
     os.makedirs(spec_dir, exist_ok=True)
 
     pts = points if points is not None else grid_points()
+    if order == 'coarse_to_fine':
+        pts = coarse_to_fine(list(pts))
+    elif order is not None:
+        raise ValueError(f"unknown order {order!r}")
     if limit:
         pts = pts[:limit]
 
@@ -279,8 +318,10 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
                           XNH3=XNH3_FIDUCIAL, numberdensity=n,
                           radius_sphere=radius_sphere, N_NH3_target=N,
                           vturb=p.fwhm_kms_to_vturb_ms(dv_kms),
-                          wdir=WDIR, odir=odir, key=key, mesh=mesh,
-                          nrays=NRAYS if nrays is None else nrays))
+                          wdir=wdir or WDIR, odir=odir, key=key, mesh=mesh,
+                          nrays=NRAYS if nrays is None else nrays,
+                          solver=solver, keep_model_file=keep_model_file,
+                          save_populations=save_populations))
 
     # Storage guard: 500 channels x 3 lines x float32, plus the shared axis.
     per_model_kb = (500 * len(LINES) * 4) / 1024.0
@@ -294,20 +335,28 @@ def build(odir=DEFAULT_ODIR, processes=14, dv_kms=REFERENCE_DV_KMS, limit=None,
         print("dry run -- nothing executed")
         return
 
+    from nh3hia.model3d.solver_profiles import canonical as _canon
+    header_cols = HEADER if _canon(solver) == 'legacy' else HEADER_PROVENANCE
+    pop_dir = os.path.join(odir, 'populations')
+    if save_populations:
+        os.makedirs(pop_dir, exist_ok=True)
     header_written = os.path.exists(out_csv)
     ctx = multiprocessing.get_context("spawn")
     t_start = time.time()
     n_ok = n_fail = 0
     with ctx.Pool(processes=processes, maxtasksperchild=1) as pool:
         with open(out_csv, 'a' if header_written else 'w', newline='') as f:
-            w = csv.DictWriter(f, fieldnames=HEADER, extrasaction='ignore')
+            w = csv.DictWriter(f, fieldnames=header_cols, extrasaction='ignore')
             if not header_written:
                 w.writeheader()
             for row, spectra in pool.imap_unordered(_worker, tasks):
                 key = row.pop('_key', None)
-                w.writerow({k: row.get(k, '') for k in HEADER})
+                w.writerow({k: row.get(k, '') for k in header_cols})
                 f.flush()
                 if spectra is not None:
+                    pop = {k: spectra.pop(k) for k in POPULATION_KEYS if k in spectra}
+                    if pop:
+                        np.savez_compressed(os.path.join(pop_dir, f'{key}.npz'), **pop)
                     np.savez_compressed(os.path.join(spec_dir, f'{key}.npz'), **spectra)
                     n_ok += 1
                 else:

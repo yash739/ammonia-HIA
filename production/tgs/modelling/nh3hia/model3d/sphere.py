@@ -47,6 +47,7 @@ from scipy.spatial import Delaunay
 
 import nh3hia.hyperfine as nh3_hyperfine
 import nh3hia.noise as _noise
+from nh3hia.model3d import solver_profiles
 
 # -----------------------------
 # Vectorized Physics Functions -- CONSTANT AMMONIA ABUNDANCE HAS BEEN ASSUMED FOR SIMPLICITY
@@ -557,7 +558,8 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
               image_lines=None, fov_pad_factor=1.0, nx_pix=16, ny_pix=16, resolution=10,
               nrays=48, return_cubes=False,
               save_image_fits=False, noise_rms_K=None, noise_seed=None,
-              spectrum='center', mesh=None, return_image=False):
+              spectrum='center', mesh=None, return_image=False,
+              solver='legacy', keep_model_file=True, save_populations=False):
     """
     fov_pad_factor: ratio of the CMB (outer) boundary radius to r_out (the emitting
     sphere's own radius). Default 1.0 reproduces the original behaviour exactly:
@@ -567,10 +569,17 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     convolution kernel to see real background. Pass e.g. 5.0 to place the boundary
     (and a coarse background-density fringe) 5x further out, giving a convolution
     real sky to sample instead of replicating source-edge brightness.
+
+    solver: named solver profile (nh3hia.model3d.solver_profiles); 'legacy' is the
+    original behaviour (gold table). Non-legacy profiles tag the model-file name.
+    keep_model_file=False deletes the .hdf5 once imaging is done (radial files are
+    ~80 MB each). save_populations=True adds extra_spectra['populations'] (float32
+    fractional level populations per mesh point), ['r_over_rout'] and ['abundance']
+    so warm-start and 1D comparisons do not need the .hdf5.
     """
 
-    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_pad{fov_pad_factor}_res{resolution}_nr{nrays}{mesh_tag(mesh)}.hdf5')
-    lamda_file = os.path.join(wdir, 'p-nh3@loreau.dat.txt')
+    model_file = os.path.join(wdir, f'model_files/NLTE_analytic_sphere_nh3_{XNH3}_{numberdensity:.2e}_{radius_sphere:.2e}_{vturb}_{T_cloud}_pad{fov_pad_factor}_res{resolution}_nr{nrays}{mesh_tag(mesh)}{solver_profiles.file_tag(solver)}.hdf5')
+    lamda_file = solver_profiles.lamda_path(wdir, solver)
 
     m_H2 = 2.01588 * constants.u.si.value
     rho_cloud = numberdensity * 1.0E6 * m_H2
@@ -604,9 +613,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     model.parameters.set_nrays(nrays)
     model.parameters.set_nspecs(3)
     model.parameters.set_nlspecs(1)
-    model.parameters.set_nquads(20)
-    model.parameters.sum_opacity_emissivity_over_all_lines = True
-    model.parameters.pop_prec = 1.0e-6
+    solver_profiles.apply_before_write(model, solver)   # nquads, sum-over-lines, pop_prec ('legacy': 20, True, 1e-6)
 
     model.geometry.points.position.set(positions_reduced)
     model.geometry.points.velocity.set(velocity)
@@ -627,6 +634,8 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     setup.set_linedata_from_LAMDA_file(model, lamda_file)
     setup.set_quadrature(model)
 
+    if solver_profiles.canonical(solver) != solver_profiles.LEGACY and os.path.exists(model_file):
+        os.remove(model_file)   # a stale file from another profile would raise 'SetOnce' on write
     max_write_attempts = 3
     write_success = False
         
@@ -655,6 +664,7 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     # Execute Model
     # -----------------------------
     model = magritte.Model(model_file)
+    solver_profiles.apply_after_read(model, solver)    # settings Magritte does not persist in the .hdf5
     model.compute_spectral_discretisation()
     model.compute_inverse_line_widths()
     model.compute_LTE_level_populations()
@@ -770,6 +780,17 @@ def run_model(wdir, odir, XNH3=1e-7, numberdensity=1e8, vturb=100, T_cloud=35, m
     ny = len(np.unique(ImY))
 
     tau_main = tau_main_flat[120]
+
+    if save_populations:
+        lp = model.lines.lineProducingSpecies[0]
+        pop = np.array(lp.population).reshape(-1, lp.linedata.nlev)
+        tot = pop.sum(axis=1, keepdims=True)
+        extra_spectra['populations'] = (pop / np.where(tot > 0, tot, 1.0)).astype(np.float32)
+        extra_spectra['r_over_rout'] = (np.linalg.norm(np.array(model.geometry.points.position), axis=1)
+                                        / r_out).astype(np.float32)
+        extra_spectra['abundance'] = np.array(model.chemistry.species.abundance)[:, 0].astype(np.float32)
+    if not keep_model_file and os.path.exists(model_file):
+        os.remove(model_file)
 
     return info + (tau_main, extra_spectra, npoints, nb_boundary)
 
