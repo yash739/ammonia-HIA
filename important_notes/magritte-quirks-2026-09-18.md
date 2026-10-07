@@ -1564,3 +1564,16 @@ works end to end (proto1d.py), 40 shells x 40 rays, 70-145 s at 2 threads vs 200
 radial 14x260 within 0-3% except R_01 (outer satellite, -3..-6%); 1D is converged in shells/rays (80x80 vs 40x40: <0.6%), the 3D
 radial R_01 falls toward it as the mesh is refined (S106: cube 0.590, 12x140 0.539, 14x260 0.525, 1D 0.489), so 1D is plausibly the
 better-converged answer. 1D LTE vs Stutzki Eq.(11): -0.2..-0.9% for tau_chord<=1, -2.7% at 2.8 (not yet validated at high tau).
+
+
+## 26. Validated speed-ups and the radial rebuild (2026-10-07; branch speedup-nlte)
+Full evidence and tables: production/output_speedup_tests/findings.md (+report.md, mesh_report.md); modes survey:
+important_notes/magritte-modes-2026-10-07.md. Summary: `close` (CloseLines) is exact (0.04% max, 8.5x); 36-level LAMDA
+truncation is safe only for log N/dv <= 15.8 (2-4% errors at cold very-high-column nodes -- the population share
+argument alone was NOT sufficient, the far-IR ladder couples at high tau); nquads 12 and pop_prec 1e-4 are safe
+(<= 0.43%, <= 0.04% vs a 1e-8 truth); fixed Ng gives nothing on average. Regional fast profile: 25x (16-228x) below, 14x
+above. Radial 12x140 costs 4.4x the cube. cube vs radial 12x140: 3-6% median differences in satellite ratios (R_10 5.8%,
+up to ~37% at single cold/masing nodes). Code: nh3hia/model3d/solver_profiles.py (profiles, regional rule, truncated
+LAMDA generator), run_model(solver=, keep_model_file=, save_populations=), build(solver=, order='coarse_to_fine'),
+analysis/validation/speedup_*.py, analysis/mesh/mesh_speedup_*.py, analysis/grids/build_gold_grid_radial.py,
+analysis/grids/rebuild_progress.py. Rebuild launched 2026-10-07 08:14 into production/output_lut_gold_radial/.

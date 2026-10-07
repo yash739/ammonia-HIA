@@ -39,7 +39,7 @@ if __name__ == '__main__':
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
     gold = os.path.realpath(paths.LUT_GOLD)
-    assert not os.path.realpath(a.odir).startswith(gold), 'refusing to write inside the gold grid'
+    assert os.path.commonpath([os.path.realpath(a.odir), gold]) != gold, 'refusing to write inside the gold grid'
     pts = full_gold_points()
     assert len(pts) == 2464, len(pts)
     mesh = {'kind': 'radial', 'n_shell': a.n_shell, 'base': a.base, 'seed': 7}
