@@ -1540,3 +1540,27 @@ artefact of this bug. Sensitivity (important): +-10% in R_22 moves the predicted
 (S3 0.019-0.040, S4 0.025-0.053, S106 0.006-0.022), so agreement is within the uncertainty of the R_22
 definition (3D takes the peak of the blended (2,2) profile, S85's is the Delta F1 = 0 group; est. <= 3%).
 Posteriors become bimodal again (22/23 positions) with the held-out (2,1) acting as the branch discriminator.
+
+
+## 25. Speeding up the non-LTE solve (2026-10-06; scratch/nlte_speed/)
+Cost anatomy (cube mesh, 377 pts, 4-6 threads): the radiation field is 99.9% of each iteration (~32 s; statistical
+equilibrium 0.05 s). Cause: `sum_opacity_emissivity_over_all_lines = True` ("None" approximation) makes every opacity
+evaluation loop over all 115 lines (one exp() each), for every ray point x quadrature point x line x ray x point.
+Measured fixes (ratios compared with the old setup; wall = solve, 4 threads, 3 jobs at once):
+ * `sum_opacity_emissivity_over_all_lines = False` (CloseLines; only lines within max_distance_opacity_contribution=10 widths
+   contribute): ratios IDENTICAL to 5 decimals, 7-9x faster (6.1/27/15.35: 370 s -> 48 s; 4.52/18/15.8: ~1870 -> 201 s).
+   Cutoff 5/10/20 widths all identical. Iteration count unchanged.
+ * truncate LAMDA to 36 levels (77 lines): 1.4-1.9x more, <=0.2% change in ratios. 24 levels is NOT safe (8%).
+ * nquads 20 -> 12: another 1.4-1.7x, <=0.35% (nq=8 gives up to 1.7-2.9% at masing nodes: not safe).
+ * pop_prec 1e-6 -> 1e-4: fewer iterations (up to 1.5x; in the cold low-density corner the tight 1e-6 never converges in
+   250 its, 1e-4 converges in ~100-160), <=0.1% change.
+ * Ng: default adaptive Ng is fine except in the iteration-bound cold corner, where `use_adaptive_Ng_acceleration=False`
+   + `Ng_acceleration_mem_limit=15` halves the iterations (158 -> 82). Without Ng: 3.5x more iterations.
+ * Warm start from a neighbouring node NOT yet properly tested (populations are absolute, need rescaling by abundance).
+Combined (close+lev36+nq12+prec1e-4[+ngfixed]): 4.52/18/15.8 1869 -> 61 s; 5.02/36/15.8 1726 -> 51 s; 3.52/12/15.35 1455 -> 51 s;
+and OMC S3 on radial 12x140 1532 -> 45 s (ratios within 0.08%), hybrid 2323 -> 58 s (within 0.07%). ~30-40x everywhere.
+1D spherical-symmetry Magritte (dimension=1, set_spherical_symmetry, compute_image per tangent ray, area-weighted disc):
+works end to end (proto1d.py), 40 shells x 40 rays, 70-145 s at 2 threads vs 2000-4200 s for radial 14x260. Agrees with
+radial 14x260 within 0-3% except R_01 (outer satellite, -3..-6%); 1D is converged in shells/rays (80x80 vs 40x40: <0.6%), the 3D
+radial R_01 falls toward it as the mesh is refined (S106: cube 0.590, 12x140 0.539, 14x260 0.525, 1D 0.489), so 1D is plausibly the
+better-converged answer. 1D LTE vs Stutzki Eq.(11): -0.2..-0.9% for tau_chord<=1, -2.7% at 2.8 (not yet validated at high tau).
