@@ -20,7 +20,7 @@ ODIR = os.path.join(paths.PRODUCTION, 'output_lut_gold_radial')
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--deadline', default='2026-10-09 09:00')
-    ap.add_argument('--processes', type=int, default=3)
+    ap.add_argument('--processes', type=float, default=4, help='effective concurrent processes (default 4)')
     a = ap.parse_args()
     f = os.path.join(ODIR, 'results', 'lut_dv0.30.csv')
     d = pd.read_csv(f)
