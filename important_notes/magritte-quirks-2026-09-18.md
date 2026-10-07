@@ -1484,3 +1484,59 @@ tests/test_escape1d.py asserts the S85 grouping, beta continuation, rate
 completeness, and that the model reproduces S85's own Table 1a T_B,theor
 (within 5%) and Table 3 (2,1)/(1,1) theory (within 10%). Old 1D outputs
 archived to scratch/output/output_escape1d_pre_audit_2026-09-30/.
+
+## 23. Where the 1D-3D difference comes from (10-06)
+
+Comparison at matched grid nodes (3D radial 14x260 non-LTE runs, production/output_mesh_nlte/; script
+scratch/escape1d_audit_2026-09-30/compare_1d_3d.py). Findings, largest first:
+
+1. **3D amplitude-extraction bug (affects the whole gold LUT).** build.py takes A_MAIN_22 and A_MAIN_21 from
+   `native_peak_tmb` (5-channel box-smoothed peak) but A_MAIN (1,1) from a 5-Gaussian fit. Channels are
+   0.152 km/s and lines are 0.37-0.6 km/s FWHM (2.4-4 channels), so the box smoothing lowers the peak by
+   25-43% (smoothed/raw 0.57-0.79 for (2,2), 0.62-0.71 for (2,1)). Stored R_22_MAIN and R_21_11 are therefore
+   too low by 1.4-1.9x and 1.4x. With a Gaussian-fit peak, (2,2)/(1,1) agrees with the 1D model to +-3% at all
+   10 nodes. Consequences: R_22 is one of five fitted ratios (the thermometer), so 3D temperatures were biased
+   hot (3D fits were 8-15 K hotter than 1D); the held-out 3D (2,1)/(1,1) was underestimated by ~1.4x, so the
+   (2,1) over-prediction is understated. Spectra are stored for every model, so re-extraction needs no
+   Magritte compute. NOT YET FIXED in the production table.
+2. **Linewidth.** Magritte adds thermal broadening to the 0.3 km/s turbulent FWHM: total FWHM 0.37 (18 K) to
+   0.43 km/s (36 K) (measured 0.378 at thin column, 18 K). The 1D model uses 0.3 km/s total, as S85. "dv=0.3"
+   in the gold LUT is the turbulent FWHM, not the total. Effect on ratios 10-20% (R_10 up to 20%), T_B ~10%.
+3. **Column convention.** 3D N/dv is the diameter column (N = 2 n X R); the 1D model's N is the radius column
+   (S85, N = n R). Compare 3D at N with 1D at N/2 (0.30 dex).
+4. **Populations agree.** Manifold-summed (1,1), (2,2), (2,1) populations 3D vs 1D within 1-3%; the first 36
+   levels hold 100% of the 3D population (48 vs 36 levels irrelevant).
+5. **Mesh** (cube vs radial): ratios 1-13%, T_B -18%, central tau -42%; much smaller than 1-3.
+6. **Remaining:** (2,1)/(1,1) 1D/3D = 1.4-1.65x after fixes 1-3. Not the populations: the 1D brightness formula
+   evaluated on the 3D populations gives 0.185 (OMC S3), equal to the 1D value (0.187), versus 0.120 from the
+   3D image. So the (2,1) gap is in line formation (formula vs ray-traced image), cause not yet identified.
+
+## 24. FIX: (2,2)/(2,1) amplitude extraction; the 3D results change (10-06)
+
+**Bug (sec. 23 item 1).** `native_peak_tmb` (5-channel box smoothing) underestimated the (2,2) and (2,1) peaks by
+25-43% relative to the (1,1) Gaussian-fit amplitude (lines 2.4-4 channels wide). Old estimator / true peak on
+synthetic lines: 0.35 (FWHM 0.25 km/s), 0.51 (0.37), 0.73 (0.6), 0.88 (1.0), 0.94 (1.5).
+
+**Fix.** `nh3hia.spectrum_utils.line_peak_tmb`: linear baseline from the edges, peak located on a 3-channel
+smoothed copy, bounded Gaussian fit in +-2 km/s, validity checks, model-free cubic-spline-peak fallback. Synthetic
+tests (tests/test_line_peak.py: single, (2,1)-like and (2,2)-like hyperfine patterns, FWHM 0.25-1.5, random
+sub-channel offsets, noise S/N 10-100): within 0.3-3% of the true peak (worst: FWHM 0.25, fallback), noise bias
+~1/SNR. Used by build.py and the noise-recovery test from now on.
+
+**Re-extraction without Magritte compute.** `analysis/grids/reextract_amplitudes.py` rewrote A_MAIN_22/R_22_MAIN/
+A_MAIN_21/R_21_11 from the stored spectra of gold (2464 rows), fig56 (216) and the mesh-comparison runs; originals
+kept as results/lut_dv0.30.pre_v2_extraction.csv. Acceptance rules: (2,2) re-extracted for 2347/2464 gold rows;
+the 117 rejected rows are ripple-dominated (cold, low-density, high-column corner; unconverged) and keep the
+old value. (2,1) re-extracted only where the line is above the numerical floor (1077/2464, detected_21); the other
+1387 keep the old ripple-floor upper limit. `extractor` column: v2_gaussfit / v2_gaussfit_22only / v1.
+Re-extracted rows: new/old (2,2) 1.29-2.07 (median 1.67); (2,1) 1.34-1.5; Gaussian vs spline peaks agree to
+2-5% (median gauss/spline 1.02 (2,2), 0.95 (2,1)).
+
+**Consequences (3D, Loreau rates; before -> after).** Median fitted T_k 29.6 -> 22.0 K, log n 7.27 -> 6.39, log N/dv
+15.44 -> 15.11; vs Stutzki Table 1a median dlogn +0.64 -> -0.17. Held-out (2,1)/(1,1) at best fit: OMC S3 0.086 ->
+0.029 (obs 0.015), OMC S4 0.094 -> 0.038 (obs 0.028), S106 (0,0) 0.064 -> 0.014 (obs 0.014). W33 A 0.148 -> 0.062
+(obs 0.093), W33 B 0.223 -> 0.077 (obs 0.114). The "3-5x over-prediction" of sec. 21/Paper I was largely an
+artefact of this bug. Sensitivity (important): +-10% in R_22 moves the predicted (2,1)/(1,1) by roughly +-40%
+(S3 0.019-0.040, S4 0.025-0.053, S106 0.006-0.022), so agreement is within the uncertainty of the R_22
+definition (3D takes the peak of the blended (2,2) profile, S85's is the Delta F1 = 0 group; est. <= 3%).
+Posteriors become bimodal again (22/23 positions) with the held-out (2,1) acting as the branch discriminator.

@@ -10,6 +10,10 @@ the module it was written in no longer represents the pipeline's approach.
 import os
 import sys
 import numpy as np
+from scipy.interpolate import CubicSpline
+from scipy.optimize import curve_fit
+
+EXTRACTOR_VERSION = 'v2_gaussfit'   # recorded in LUT CSVs; v1 = 5-channel smoothed peak (biased low)
 
 
 def native_peak_tmb(velos, Is, freq_rest, smooth_channels=5, detection_sigma=3.0):
@@ -60,3 +64,53 @@ def native_peak_tmb(velos, Is, freq_rest, smooth_channels=5, detection_sigma=3.0
     noise = float(np.std(resid))
     detected = peak >= detection_sigma * noise
     return peak, noise, detected
+
+
+def line_peak_tmb(velos, Is, freq_rest, window_kms=2.0, return_info=False):
+    """Unbiased peak brightness temperature of one (blended) hyperfine line.
+
+    Replaces `native_peak_tmb` as the amplitude of the (2,2) and (2,1) lines.
+    That function box-smoothed over 5 channels to suppress single-channel
+    noise, but model lines are only 2-4 channels wide (0.152 km/s channels,
+    0.37-0.6 km/s FWHM), so the smoothing lowered the peak by 25-43% relative
+    to the (1,1) Gaussian-fit amplitude it is divided by (important_notes
+    sec. 23).
+
+    Method: remove a linear baseline from the line-free edges (as for (1,1)),
+    locate the peak on a 3-channel-smoothed copy (robust to noise), and fit a
+    Gaussian within +-`window_kms` with bounded centre and width. If the fit
+    fails or is inconsistent with the data (amplitude outside 0.9-1.35 x the
+    raw maximum, or fitted FWHM outside 0.5 channels - 4 km/s), fall back to a
+    model-free peak: the maximum of a cubic-spline interpolation of the raw
+    spectrum. Both are unbiased for a line sampled at >~ 2 channels per FWHM,
+    for any sub-channel position of the peak.
+
+    Returns peak [K] or, with return_info=True, (peak, info) where info has
+    method ('gauss' | 'spline'), fwhm [km/s] (nan for spline), raw_peak,
+    spline_peak and gauss_over_spline."""
+    from nh3hia.spectral_fit import intensity_to_Tmb, subtract_baseline
+    v = np.asarray(velos, dtype=float)
+    T = subtract_baseline(v, intensity_to_Tmb(1000 * v, np.asarray(Is), freq_rest))
+    dv = float(np.median(np.diff(v)))
+    raw = float(T.max())
+    fine = np.linspace(v[0], v[-1], 10 * len(v))
+    spline = float(CubicSpline(v, T)(fine).max())
+    i0 = int(np.argmax(np.convolve(T, np.ones(3) / 3, mode='same')))
+    c0 = v[i0]
+    sel = np.abs(v - c0) < window_kms
+    info = dict(method='spline', fwhm=np.nan, raw_peak=raw, spline_peak=spline, gauss_over_spline=np.nan)
+    peak = spline
+    if sel.sum() >= 6 and raw > 0:
+        g = lambda x, a, c, sg: a * np.exp(-0.5 * ((x - c) / sg) ** 2)
+        try:
+            po, _ = curve_fit(g, v[sel], T[sel], p0=[raw, c0, 0.2],
+                              bounds=([0.0, c0 - 0.5, 0.25 * dv], [3.0 * raw, c0 + 0.5, 4.0 / 2.3548]),
+                              maxfev=2000)
+            a, c, sg = po
+            fwhm = 2.3548 * sg
+            if 0.9 * raw <= a <= 1.35 * raw and 0.5 * dv <= fwhm <= 4.0:
+                peak = float(a)
+                info.update(method='gauss', fwhm=float(fwhm), gauss_over_spline=float(a / spline))
+        except Exception:
+            pass
+    return (peak, info) if return_info else peak

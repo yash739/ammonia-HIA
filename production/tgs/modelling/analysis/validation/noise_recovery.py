@@ -76,7 +76,7 @@ def _worker_init(mode):
     import nh3hia.w33.params as p
     from nh3hia.noise import add_channel_noise, rms_for_target_snr, line_seed
     from nh3hia.spectral_fit import fit_five_gaussians, subtract_baseline, intensity_to_Tmb
-    from nh3hia.spectrum_utils import native_peak_tmb
+    from nh3hia.spectrum_utils import line_peak_tmb
     from nh3hia.stutzki.physics import physically_consistent
     import nh3hia.hyperfine as hf
 
@@ -100,7 +100,7 @@ def _worker_init(mode):
     _G.update(dict(p=p, hf=hf, add_channel_noise=add_channel_noise,
                     rms_for_target_snr=rms_for_target_snr, line_seed=line_seed,
                     fit_five_gaussians=fit_five_gaussians, subtract_baseline=subtract_baseline,
-                    intensity_to_Tmb=intensity_to_Tmb, native_peak_tmb=native_peak_tmb,
+                    intensity_to_Tmb=intensity_to_Tmb, line_peak_tmb=line_peak_tmb,
                     physically_consistent=physically_consistent,
                     chi2_retrieve=chi2_retrieve, interps=interps, spectra=spectra))
 
@@ -128,7 +128,7 @@ def _fit_ratios(v11, I11, v22, I22, rms_K, seed):
     if AMAIN <= 0:
         return None
 
-    A22, _, _ = g['native_peak_tmb'](v22, I22n, g['p'].FREQ_HZ['2,2'])
+    A22 = g['line_peak_tmb'](v22, I22n, g['p'].FREQ_HZ['2,2'])
 
     ratios = {
         'R_01_MAIN': A01 / AMAIN, 'R_10_MAIN': A10 / AMAIN,

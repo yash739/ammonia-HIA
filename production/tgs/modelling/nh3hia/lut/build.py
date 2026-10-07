@@ -131,7 +131,7 @@ HEADER = [
     'I_10', 'I_12', 'I_MAIN', 'I_21', 'I_01',
     'RI_01_MAIN', 'RI_10_MAIN', 'RI_21_MAIN', 'RI_12_MAIN',
     'HIA_IS', 'HIA_OS', 'CEN_MAIN', 'SIG_MAIN', 'FWHM_MAIN',
-    'A_MAIN_22', 'R_22_MAIN', 'A_MAIN_21', 'R_21_11', 'detected_21',
+    'A_MAIN_22', 'R_22_MAIN', 'A_MAIN_21', 'R_21_11', 'detected_21', 'extractor',
     'tau_main', 'halting_iter', 'final_convergence', 'convergence_ok',
     'nrays', 'resolution', 'max_NLTE', 'npoints', 'nboundary',
     'spectrum', 'fov_pad_factor',
@@ -186,7 +186,7 @@ def _worker(task):
 
     from nh3hia.model3d.sphere import run_model
     from nh3hia.spectral_fit import analyse_spectra
-    from nh3hia.spectrum_utils import native_peak_tmb
+    from nh3hia.spectrum_utils import native_peak_tmb, line_peak_tmb, EXTRACTOR_VERSION
     import nh3hia.hyperfine as hf
 
     t0 = time.time()
@@ -213,9 +213,10 @@ def _worker(task):
 
         # (2,2) and (2,1) main-line peaks -- both already imaged, so free.
         v22, I22 = extra['22']
-        A22, _, _ = native_peak_tmb(v22, I22, p.FREQ_HZ['2,2'])
+        A22 = line_peak_tmb(v22, I22, p.FREQ_HZ['2,2'])
         v21, I21 = extra['21']
-        A21, _, det21 = native_peak_tmb(v21, I21, p.FREQ_HZ['2,1'])
+        A21 = line_peak_tmb(v21, I21, p.FREQ_HZ['2,1'])
+        _, _, det21 = native_peak_tmb(v21, I21, p.FREQ_HZ['2,1'])   # detection flag only (numerical-ripple floor)
 
         spectra = {}
         for lbl in LINES:
@@ -230,7 +231,7 @@ def _worker(task):
             R_22_MAIN=float(A22 / hfs['A_MAIN']) if hfs['A_MAIN'] else np.nan,
             A_MAIN_21=float(A21),
             R_21_11=float(A21 / hfs['A_MAIN']) if hfs['A_MAIN'] else np.nan,
-            detected_21=bool(det21),
+            detected_21=bool(det21), extractor=EXTRACTOR_VERSION,
             tau_main=float(tau), halting_iter=int(hi), final_convergence=float(conv),
             convergence_ok=bool(conv >= CONV_THRESHOLD),
             npoints=int(npoints), nboundary=int(nboundary),
