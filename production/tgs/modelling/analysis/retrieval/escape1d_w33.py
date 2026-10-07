@@ -43,6 +43,13 @@ def load_grid(path):
     return df
 
 
+def default_grid(rates, dv=None):
+    """The fine grid extended to log n = 8.5 (same range as the 3D grid) if it
+    exists, else the log n <= 7.5 fine grid."""
+    ext = os.path.join(outdir_for(rates, dv_kms=dv), 'grid_fine_ext8.5.csv')
+    return ext if os.path.exists(ext) else out_csv_for(rates, fine=True, dv_kms=dv)
+
+
 def main():
     import argparse
     ap = argparse.ArgumentParser()
@@ -53,7 +60,7 @@ def main():
                          'non-standard grid (--grid) do not overwrite the standard ones')
     a = ap.parse_args()
 
-    grid_path = a.grid or out_csv_for(a.rates, fine=True)
+    grid_path = a.grid or default_grid(a.rates)
     dirname = 'w33_retrieval' + (f'_{a.out_tag}' if a.out_tag else '')
     OUTDIR = os.path.join(outdir_for(a.rates), dirname)
     os.makedirs(OUTDIR, exist_ok=True)

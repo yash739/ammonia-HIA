@@ -39,7 +39,8 @@ def load_grid(path):
 
 
 def main():
-    grid_path = out_csv_for('s85', fine=True)
+    from analysis.retrieval.escape1d_stutzki1984 import default_grid
+    grid_path = default_grid('s85')
     outdir = os.path.join(outdir_for('s85'), 'stutzki1985_retrieval')
     os.makedirs(outdir, exist_ok=True)
 
