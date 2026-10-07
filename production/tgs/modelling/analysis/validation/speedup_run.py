@@ -61,6 +61,12 @@ def plan(which):
         jobs += [(s, hot, None) for s in N.LEVEL_LADDER]
     if which in ('ladder_prec', 'all'):
         jobs += [(s, prec_nodes, 2000 if s.endswith('prec8') else None) for s in N.PREC_LADDER]
+    if which in ('extra', 'all_extra'):
+        # Why does lev36 move the cold, very-high-column node (6.5, 18 K, 16.25) by 2-4%? Separate
+        # truncation from convergence path with a tight-precision ladder (1e-8, up to 2000 iterations).
+        hi_col = [(6.5, 18.0, 16.25), (6.5, 18.0, 16.025), (6.0, 18.0, 16.25), (7.0, 15.0, 16.25),
+                  (8.5, 48.0, 16.25), (5.5, 39.0, 16.025)]
+        jobs += [(s_, hi_col, 2000) for s_ in ('close+prec8', 'close+lev36+prec8', 'close+lev40+prec8', 'close+lev44+prec8')]
     return jobs
 
 
