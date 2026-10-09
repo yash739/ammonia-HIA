@@ -60,6 +60,9 @@ OBSERVABLES = [
 ]
 
 
+RADIAL = bool(os.environ.get('NH3_LUT_GOLD_DIR'))     # NH3_LUT_* pointing at the radial rebuild
+
+
 def clean_axes_figure(mag, lte=None):
     cmap = plt.get_cmap('viridis')
     colors = {n: cmap(i / (len(LOG_NS) - 1)) for i, n in enumerate(LOG_NS)}
@@ -70,7 +73,7 @@ def clean_axes_figure(mag, lte=None):
             ax = axes[i, j]
             ax.plot(tau_ref, eq11_on_chord_axis(tau_ref, comp), color='black', ls='--', lw=1.2)
             if lte is not None:
-                for mesh in ('cube', 'radial'):
+                for mesh in (('radial',) if RADIAL else ('cube', 'radial')):
                     x, y = lte_curve(lte, mesh, T, col)
                     ax.plot(x, y, zorder=1, **LTE_STYLE[mesh])
             for n in LOG_NS:
@@ -90,11 +93,12 @@ def clean_axes_figure(mag, lte=None):
                       label=f"log n' = {n:.1f}" + (' (Stutzki)' if n in STUTZKI_NS else ''))
                for n in LOG_NS] + [Line2D([], [], color='black', ls='--', label='Eq. (11), no anomaly')]
     if lte is not None:
-        handles += [Line2D([], [], label='LTE, cube mesh (same mesh as NLTE)', **LTE_STYLE['cube']),
-                    Line2D([], [], label='LTE, radial mesh', **LTE_STYLE['radial'])]
+        if not RADIAL:
+            handles += [Line2D([], [], label='LTE, cube mesh (same mesh as NLTE)', **LTE_STYLE['cube'])]
+        handles += [Line2D([], [], label='LTE, radial mesh' + (' (same mesh as NLTE)' if RADIAL else ''), **LTE_STYLE['radial'])]
     fig.legend(handles=handles, loc='upper center', ncol=5, fontsize=9, bbox_to_anchor=(0.5, 1.0))
     fig.suptitle('Stutzki & Winnewisser (1985) Figs. 5-6 reproduced with Magritte 3D NLTE '
-                 '(Loreau et al. 2023 rates, cube mesh), 8 densities', y=1.04, fontsize=12)
+                 f"(Loreau et al. 2023 rates, {'radial 12x140' if RADIAL else 'cube'} mesh), 8 densities", y=1.04, fontsize=12)
     plt.tight_layout(rect=(0, 0, 1, 0.95))
     out = os.path.join(OUTDIR, 'fig5_6_magritte_8dens.png')
     plt.savefig(out, dpi=170, bbox_inches='tight')
@@ -134,4 +138,5 @@ def scanned_page_figure(mag):
 if __name__ == '__main__':
     mag = load_magritte()
     clean_axes_figure(mag, load_lte_ref())
-    scanned_page_figure(mag)
+    if not RADIAL:
+        scanned_page_figure(mag)
