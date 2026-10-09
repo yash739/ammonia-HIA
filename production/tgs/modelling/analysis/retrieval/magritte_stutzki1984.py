@@ -42,7 +42,7 @@ from nh3hia.stutzki.physics import eta_f as calc_eta_f, clump_count_K, clump_cou
 from nh3hia import paths
 
 DV_CLUMP_KMS = 0.3
-OUTDIR = paths.PRODUCTION + "/output_lut_gold/results/stutzki1985_retrieval/"
+OUTDIR = paths.LUT_GOLD + "/results/stutzki1985_retrieval/"
 QGRID = dict(n_log_n=200, n_T=73, n_log_Ndv=90)
 OFFSETS = hf.NH3_11_OFFSETS_KMS  # order: A_10, A_12, A_MAIN, A_21, A_01
 COMP_ORDER = ('A_10', 'A_12', 'A_MAIN', 'A_21', 'A_01')

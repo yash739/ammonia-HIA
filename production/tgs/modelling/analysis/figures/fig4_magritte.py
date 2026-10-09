@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from nh3hia import paths
 
-DEFAULT_LUT = paths.PRODUCTION + "/output_lut_gold/results/lut_dv0.30.csv"
+DEFAULT_LUT = paths.LUT_GOLD + "/results/lut_dv0.30.csv"
 FIG4_TEMPS = [18.0, 24.0, 30.0, 36.0]
 
 # (column, panel title, cmap) -- matches Fig. 4a (outer), 4b (inner), 4c ((2,2)/(1,1))

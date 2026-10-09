@@ -100,7 +100,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('--lut', default=DEFAULT_LUT)
-    ap.add_argument('--outdir', default=paths.PRODUCTION + '/output_lut_gold/results/')
+    ap.add_argument('--outdir', default=paths.LUT_GOLD + '/results/')
     a = ap.parse_args()
 
     df = load(a.lut)

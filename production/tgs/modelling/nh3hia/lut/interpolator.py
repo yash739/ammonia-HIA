@@ -26,7 +26,7 @@ import pandas as pd
 from scipy.interpolate import LinearNDInterpolator
 from nh3hia import paths
 
-DEFAULT_LUT = paths.PRODUCTION + "/output_lut_gold/results/lut_dv0.30.csv"
+DEFAULT_LUT = paths.LUT_GOLD + "/results/lut_dv0.30.csv"
 # Excludes the low-density/high-column corner where the implied clump radius
 # exceeds 0.5 pc (>>Stutzki's ~0.01 pc clumps): that corner is subcritically
 # thermalized against strong radiative pumping and shows non-convergent,

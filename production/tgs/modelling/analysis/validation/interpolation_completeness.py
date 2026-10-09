@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import LinearNDInterpolator
 from nh3hia import paths
 
-DEFAULT_LUT = paths.PRODUCTION + "/output_lut_gold/results/lut_dv0.30.csv"
+DEFAULT_LUT = paths.LUT_GOLD + "/results/lut_dv0.30.csv"
 PC_CM = 3.0857e18
 AMPS = ['A_01', 'A_10', 'A_MAIN', 'A_21', 'A_12']
 RATIOS = [('R_01_MAIN', 'A_01'), ('R_10_MAIN', 'A_10'),
@@ -84,8 +84,8 @@ def main():
     ap.add_argument('--lut', default=DEFAULT_LUT)
     ap.add_argument('--subsample', type=int, default=None,
                      help='cap the number of interior points tested (random subsample) for speed')
-    ap.add_argument('--out', default=paths.PRODUCTION + '/output_lut_gold/results/interpolation_completeness.png')
-    ap.add_argument('--csv-out', default=paths.PRODUCTION + '/output_lut_gold/results/interpolation_holdout_gold.csv')
+    ap.add_argument('--out', default=paths.LUT_GOLD + '/results/interpolation_completeness.png')
+    ap.add_argument('--csv-out', default=paths.LUT_GOLD + '/results/interpolation_holdout_gold.csv')
     a = ap.parse_args()
 
     df = load(a.lut)

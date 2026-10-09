@@ -46,7 +46,7 @@ from analysis.retrieval.magritte_stutzki1984 import gaussian_spectrum, chi2_slic
 from nh3hia import paths
 
 DV_CLUMP_KMS = 0.3
-OUTDIR = paths.PRODUCTION + "/output_lut_gold/results/w33_retrieval/"
+OUTDIR = paths.LUT_GOLD + "/results/w33_retrieval/"
 QGRID = dict(n_log_n=200, n_T=73, n_log_Ndv=90)
 
 

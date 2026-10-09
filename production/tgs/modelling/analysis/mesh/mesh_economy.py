@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from nh3hia.model3d.lte_probe import run_lte, tau_from_brightness, tau_from_image, chord_metrics
 from nh3hia import paths
 
-OUT_DIR = paths.PRODUCTION + "/output_lut_gold/results/"
+OUT_DIR = paths.LUT_GOLD + "/results/"
 LOG_N, T, LOG_NDV = 6.0, 24.0, 15.0  # same reference point as analysis/mesh/chord_experiment.py
 
 CUBE_RADIAL_BINS = np.array([0.0, 0.15, 0.30, 0.40, 0.45, 0.60, 0.75, 0.90, 1.0])

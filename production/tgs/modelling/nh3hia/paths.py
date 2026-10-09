@@ -31,8 +31,10 @@ OBSERVED_DATA = os.path.join(MODELLING, 'data', 'observed')
 REFERENCES = os.path.join(PRODUCTION, 'references')
 
 # Data products.
-LUT_GOLD = os.path.join(PRODUCTION, 'output_lut_gold')          # main 3D grid
+# NH3_LUT_GOLD_DIR / NH3_LUT_FIG56_DIR point every analysis script at another table (e.g. the radial rebuild)
+# without touching the gold directory; unset = the gold grids.
+LUT_GOLD = os.environ.get('NH3_LUT_GOLD_DIR') or os.path.join(PRODUCTION, 'output_lut_gold')   # main 3D grid
 LUT_GOLD_CSV = os.path.join(LUT_GOLD, 'results', 'lut_dv0.30.csv')
-LUT_FIG56 = os.path.join(PRODUCTION, 'output_lut_fig56')        # Figs 5/6 grid
+LUT_FIG56 = os.environ.get('NH3_LUT_FIG56_DIR') or os.path.join(PRODUCTION, 'output_lut_fig56')   # Figs 5/6 grid
 LUT_FIG56_CSV = os.path.join(LUT_FIG56, 'results', 'lut_dv0.30.csv')
 ESCAPE1D = os.path.join(PRODUCTION, 'output_escape1d')          # 1D model grids

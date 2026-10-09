@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from nh3hia.model3d.lte_probe import run_lte, tau_from_brightness, tau_from_image, chord_metrics
 from nh3hia import paths
 
-OUT_PNG = paths.PRODUCTION + "/output_lut_gold/results/chord_experiment_cube_vs_radial.png"
+OUT_PNG = paths.LUT_GOLD + "/results/chord_experiment_cube_vs_radial.png"
 RADIAL_MESH = {'kind': 'radial', 'n_shell': 14, 'base': 260, 'seed': 7}
 
 # moderate optical depth so tau is recoverable from brightness everywhere

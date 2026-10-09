@@ -43,8 +43,8 @@ import pandas as pd
 from nh3hia import paths
 
 
-LUT_CSV = paths.PRODUCTION + "/output_lut_gold/results/lut_dv0.30.csv"
-SPEC_DIR = paths.PRODUCTION + "/output_lut_gold/spectra"
+LUT_CSV = paths.LUT_GOLD + "/results/lut_dv0.30.csv"
+SPEC_DIR = paths.LUT_GOLD + "/spectra"
 QGRID = dict(n_log_n=200, n_T=73, n_log_Ndv=90)  # same as analysis/retrieval/magritte_stutzki1984.py
 MODE = "onnode"  # set from --mode in main() and re-set in each worker
 
@@ -260,7 +260,7 @@ def main():
 
     # Per-realization dump (for histograms / branch fractions -- the
     # aggregate median+scatter hides bimodality between density branches)
-    real_csv = paths.PRODUCTION + f"/output_lut_gold/results/noise_recovery_realizations_{MODE}.csv"
+    real_csv = paths.LUT_GOLD + f"/results/noise_recovery_realizations_{MODE}.csv"
     truth_by_label = {lab: (ln, T, ld) for lab, ln, T, ld in TRUTH_POINTS}
     pd.DataFrame([dict(label=r[0], log_n_true=truth_by_label[r[0]][0], snr=r[1],
                        raw_log_n=r[2], raw_T=r[3], filt_log_n=r[4], filt_T=r[5], fell_back=r[6])
@@ -314,7 +314,7 @@ def main():
                                   filt_frac_within_tol=filt_frac, filt_passed=filt_pass,
                                   n_fellback=n_fellback, n_fail=n_fail, n_total=len(entries)))
 
-    out_csv = paths.PRODUCTION + f"/output_lut_gold/results/noise_recovery_summary_{MODE}.csv"
+    out_csv = paths.LUT_GOLD + f"/results/noise_recovery_summary_{MODE}.csv"
     pd.DataFrame(rows_out).to_csv(out_csv, index=False)
     print(f"\nsaved {out_csv}")
 

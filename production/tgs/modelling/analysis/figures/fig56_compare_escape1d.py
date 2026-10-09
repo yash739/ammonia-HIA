@@ -55,12 +55,12 @@ import sys
 from nh3hia.stutzki.physics import eq11_thermal_ratio
 from nh3hia import paths
 
-MAGRITTE_CSV = paths.PRODUCTION + "/output_lut_fig56/results/lut_dv0.30.csv"
+MAGRITTE_CSV = paths.LUT_FIG56 + "/results/lut_dv0.30.csv"
 ESCAPE1D_CSV = {
     's85': paths.PRODUCTION + "/output_escape1d/results_s85_rates/fig56_curves.csv",
     'loreau': paths.PRODUCTION + "/output_escape1d/results_loreau_rates/fig56_curves.csv",
 }
-OUTDIR = paths.PRODUCTION + "/output_lut_fig56/results/fig5_6_direct_comparison/"
+OUTDIR = paths.LUT_FIG56 + "/results/fig5_6_direct_comparison/"
 
 TEMPS = [18.0, 26.0, 36.0]
 LOG_NS = [3.5, 5.0, 7.0]

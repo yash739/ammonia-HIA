@@ -20,7 +20,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from nh3hia import paths
 
-RES = paths.PRODUCTION + "/output_lut_gold/results/"
+RES = paths.LUT_GOLD + "/results/"
 TOL = 0.5
 
 

@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from nh3hia.lut.axes import LOG_N_AXIS, T_AXIS, LOG_NDV_AXIS
 from nh3hia import paths
 
-DEFAULT_LUT = paths.PRODUCTION + "/output_lut_gold/results/lut_dv0.30.csv"
+DEFAULT_LUT = paths.LUT_GOLD + "/results/lut_dv0.30.csv"
 PC_CM = 3.0857e18
 
 
@@ -31,7 +31,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('--lut', default=DEFAULT_LUT)
-    ap.add_argument('--out', default=paths.PRODUCTION + '/output_lut_gold/results/grid_completeness.png')
+    ap.add_argument('--out', default=paths.LUT_GOLD + '/results/grid_completeness.png')
     ap.add_argument('--mask-radius', action='store_true',
                      help='also mark cells excluded by the 0.5pc radius mask (see important_notes)')
     a = ap.parse_args()
