@@ -84,6 +84,16 @@ OBSERVABLES = [
 def load_magritte():
     df = pd.read_csv(MAGRITTE_CSV)
     df = df[(df['Status'] == 'SUCCESS') & df['convergence_ok'] & (df['tau_main'] > 0)]
+    if os.environ.get('NH3_LUT_GOLD_DIR'):
+        # Radial rebuild: its gold-style table already contains Stutzki's 18 K and 36 K slices (same nodes, same
+        # settings, correct central optical depth), so use them instead of rebuilding those temperatures.
+        g = pd.read_csv(paths.LUT_GOLD_CSV)
+        g = g[(g['Status'] == 'SUCCESS') & g['convergence_ok'] & (g['tau_main'] > 0)]
+        have = set(np.round(df['T_cloud'].unique(), 3))
+        g = g[g['T_cloud'].round(3).isin([t for t in TEMPS if t not in have])
+              & g['log_n_H2'].round(3).isin([3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0])
+              & (g['log_N_dv'] <= 15.8 + 1e-6)]
+        df = pd.concat([df, g[[c for c in g.columns if c in df.columns]]], ignore_index=True)
     df['Avg_Inner_Ratio'] = (df['R_12_MAIN'] + df['R_21_MAIN']) / 2.0
     # Magritte's tau_main (post-fix) is the central-pixel (1,1) optical depth,
     # i.e. the CENTRAL-CHORD tau -- the same quantity as Stutzki's Fig. 5/6
